@@ -3,14 +3,15 @@ import torch
 from PIL import Image, ImageDraw
 import json
 import base64
-from ultralytics import YOLOv10
+from ultralytics import YOLO
 from glob import glob
 import cv2
 import numpy as np
 import os
 
 def get_image_detector_yolov10(device = 'cpu'):
-    model = YOLOv10.from_pretrained('jameslahm/yolov10m')
+    # model = YOLOv10.from_pretrained('jameslahm/yolov10m')
+    model = YOLO("yolov10m.pt")
     model = model.to(device)
     return model
 
