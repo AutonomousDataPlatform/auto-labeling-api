@@ -4,9 +4,11 @@ from segmentation import get_segmentator, get_segments
 from detection import get_detector, get_detections
 from image_detection_yolov10 import get_image_detector_yolov10, get_image_detections_yolov10
 from weather_classification import get_classifier, get_weather_classifications
+from time_classification import get_classifier, get_time_classifications
 from starlette.responses import Response, JSONResponse
 import torch
-from fastapi import FastAPI, File
+from fastapi import FastAPI, File, UploadFile
+from PIL import Image
 
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 seg_model = get_segmentator(device)
@@ -50,3 +52,33 @@ def get_classification_map(file: bytes = File(...)):
 
     return JSONResponse(content={"weather_class": weather_class})
     # return Response(bytes_io.getvalue(), media_type="text/plane")
+
+@app.post("/time_classification")
+def get_classification_time(file: bytes = File(...)):
+    """Get time classification from image file"""
+    time_image, time_class = get_time_classifications(cls_model, file, device)
+    # bytes_io = io.BytesIO()
+    # weather_image.save(bytes_io, format="PNG")
+
+    return JSONResponse(content={"time_class": time_class})
+    # return Response(bytes_io.getvalue(), media_type="text/plane")
+    
+@app.post("/image")
+async def upload_image(file: UploadFile = File(...)):
+    image_name = file.filename
+    file_bytes = await file.read()
+    image = Image.open(io.BytesIO(file_bytes))
+    width, height = image.size
+    image_format = image.format
+    image_mode = image.mode
+
+    # 필요한 경우 이미지 정보를 dict로 구성하여 반환
+    image_info = {
+        "name": image_name,
+        "width": width,
+        "height": height,
+        "format": image_format,
+        "mode": image_mode
+    }
+    
+    return JSONResponse(content={"image_info": image_info})
