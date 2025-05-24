@@ -31,7 +31,7 @@ def get_image_detections_yolov10(model, binary_image, threshold=0.5):
     input_image = Image.open(io.BytesIO(binary_image)).convert("RGB")
     
     result = model.predict(input_image)
-    json_results = json.loads(result[0].tojson())
+    json_results = json.loads(result[0].to_json())
     ret_list = []
     for json_result in json_results:
         # print("json_result: ", json_result)

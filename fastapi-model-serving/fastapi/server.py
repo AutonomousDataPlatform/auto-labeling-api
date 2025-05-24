@@ -13,7 +13,7 @@ from PIL import Image
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 seg_model = get_segmentator(device)
 det_model = get_detector(device)
-device = "cuda:1" if torch.cuda.is_available() else "cpu"
+device = "cuda:0" if torch.cuda.is_available() else "cpu"
 cls_model = get_classifier(device)
 det_model_yolov10 = get_image_detector_yolov10(device)
 
