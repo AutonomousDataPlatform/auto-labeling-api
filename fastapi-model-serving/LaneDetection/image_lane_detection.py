@@ -71,7 +71,7 @@ def get_lane_detections(model, file, device):
     
     image = Image.fromarray(image)
     
-    return image, None
+    return image, lanes
 
 ## sub function
 def preprocess(file):
