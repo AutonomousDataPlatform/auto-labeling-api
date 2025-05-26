@@ -1,6 +1,7 @@
 # auto-labeling-api
 auto-labeling-api for data extraction from Hanyang University
 
+## 1. Settings
 Two virtual environments are required.
 - bigdata
 - bigdata_clrnet
@@ -33,3 +34,22 @@ Install torch and libraries.
     pip uninstall -y shapely
     pip install --no-cache-dir "shapely>=2.0.2"
 
+## 2. Run
+
+Terminal 1
+
+    conda activate bigdata
+    cd fastapi
+    uvicorn server:app --host 0.0.0.0 --port 8000
+
+Terminal 2
+
+    conda activate bigdata_clrnet
+    cd LaneDetection
+    uvicorn server:app --host 0.0.0.0 --port 8001
+
+Terminal 3
+
+    conda activate bigdata
+    cd streamlit
+    streamlit run ui.py
