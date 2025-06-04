@@ -6,7 +6,7 @@ Two virtual environments are required.
 - bigdata
 - bigdata_clrnet
 
-##
+###
     cd fastapi-model-serving
 
 ### bigdata
@@ -31,6 +31,7 @@ Create virtual environment.
 
 Install torch and libraries.
 
+    conda activate bigdata_clrnet
     pip install torch==2.2.1 torchvision==0.17.1 torchaudio==2.2.1 --index-url https://download.pytorch.org/whl/cu121
     cd LaneDetection
     pip install -r requirements.txt
