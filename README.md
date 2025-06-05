@@ -20,9 +20,11 @@ Install torch and libraries.
     conda activate bigdata
     pip install torch==2.2.1 torchvision==0.17.1 torchaudio==2.2.1 --index-url https://download.pytorch.org/whl/cu121
     pip install uvicorn[standard]
+    pip install fastapi[all]
     pip install ultralytics
     pip install --upgrade efficientnet-pytorch
     pip install -U requests_toolbelt
+    pip install "numpy<2"
 
 ### bigdata_clrnet
 
