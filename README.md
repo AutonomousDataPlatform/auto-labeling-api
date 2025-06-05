@@ -19,6 +19,7 @@ Install torch and libraries.
 
     conda activate bigdata
     pip install torch==2.2.1 torchvision==0.17.1 torchaudio==2.2.1 --index-url https://download.pytorch.org/whl/cu121
+    pip install uvicorn[standard]
     pip install ultralytics
     pip install --upgrade efficientnet-pytorch
     pip install -U requests_toolbelt
@@ -31,9 +32,10 @@ Create virtual environment.
 
 Install torch and libraries.
 
+    cd LaneDetection
     conda activate bigdata_clrnet
     pip install torch==2.2.1 torchvision==0.17.1 torchaudio==2.2.1 --index-url https://download.pytorch.org/whl/cu121
-    cd LaneDetection
+    pip install uvicorn[standard]
     pip install -r requirements.txt
     python setup.py build develop
     pip uninstall -y shapely
