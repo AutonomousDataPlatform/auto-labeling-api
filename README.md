@@ -21,6 +21,7 @@ Install torch and libraries.
     pip install torch==2.2.1 torchvision==0.17.1 torchaudio==2.2.1 --index-url https://download.pytorch.org/whl/cu121
     pip install uvicorn[standard]
     pip install fastapi[all]
+    pip install streamlit
     pip install ultralytics
     pip install --upgrade efficientnet-pytorch
     pip install -U requests_toolbelt
@@ -38,10 +39,12 @@ Install torch and libraries.
     conda activate bigdata_clrnet
     pip install torch==2.2.1 torchvision==0.17.1 torchaudio==2.2.1 --index-url https://download.pytorch.org/whl/cu121
     pip install uvicorn[standard]
+    pip install fastapi[all]
     pip install -r requirements.txt
     python setup.py build develop
     pip uninstall -y shapely
     pip install --no-cache-dir "shapely>=2.0.2"
+    pip install "numpy<2"
 
 ## 2. Run
 
