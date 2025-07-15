@@ -67,7 +67,7 @@ if input_image:
     detection_process = process(input_image, detection_yolov10_backend)
     detection_result = detection_process.content
     lane_detection_process = process(input_image, lane_detection_backend)
-    image_result = image_result.decode("utf-8")
+    lane_detection_result = lane_detection_process.content
 
     if isinstance(weather_result, bytes):
         weather_result = weather_result.decode("utf-8")
@@ -81,7 +81,11 @@ if input_image:
         detection_result = detection_result.decode("utf-8")
     else:
         str(detection_result)
-    
+    if isinstance(lane_detection_result, bytes):
+        lane_detection_result = lane_detection_result.decode("utf-8")
+    else:
+        str(lane_detection_result)
+
     image_data = json.loads(image_result)
     image_info = image_data["image_info"]
     weather_data = json.loads(weather_result)
@@ -90,12 +94,8 @@ if input_image:
     time_class = time_data["time_class"]
     detection_data = json.loads(detection_result)
     detection_list = detection_data["detection_result"]
-    
-    lane_detection_data = lane_detection_process.json()
-    image_b64 = lane_detection_data.get("image")
-    lane_detection_result = lane_detection_data.get("detection_result")
-    image_bytes = base64.b64decode(image_b64)
-    lane_detection_image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    lane_detection_data = json.loads(lane_detection_result)
+    lane_detection_list = lane_detection_data["detection_result"]
 
     structured_result = {
         "Image_information": {
@@ -116,7 +116,7 @@ if input_image:
             "bbox_info": []
         },
         "Lane_Detection_information": {
-            "num_of_lanes": len(lane_detection_result),
+            "num_of_lanes": len(lane_detection_list),
             "lane_info": []
         }
     }
@@ -133,7 +133,7 @@ if input_image:
         "bbox_x2": x2,
         "bbox_y2": y2
     })
-    for lane in lane_detection_result:
+    for lane in lane_detection_list:
         structured_result["Lane_Detection_information"]["lane_info"].append({
         "type": "Line",
         "points": lane
@@ -195,30 +195,63 @@ if st.button("get total result"):
         weather_result = weather_process.content
         time_process = process(input_image, time_classification_backend)
         time_result = time_process.content
+        
         detection_process = process(input_image, detection_yolov10_backend)
         detection_result = detection_process.content
-        lane_detection_process = process(input_image, lane_detection_backend)
-        lane_detection_image = Image.open(io.BytesIO(lane_detection_process.content)).convert("RGB")
+        if isinstance(detection_result, bytes):
+            detection_result = detection_result.decode("utf-8")
+        else:
+            detection_result = str(detection_result)
+            
+        payload = json.loads(detection_result)
+        detection_result = payload["detection_result"]
         
-        col1.header("Lane detection result")
-        col1.image(lane_detection_image, use_column_width=True)
-        col2.header("Time")
-        col2.write(time_result)
-        col3.header("Weather")
-        col3.write(weather_result)
-        col4.header("Detection")
-        col4.write(detection_result)
+        lane_detection_process = process(input_image, lane_detection_backend)
+        lane_detection_result = lane_detection_process.content
+        if isinstance(lane_detection_result, bytes):
+            lane_detection_result = lane_detection_result.decode("utf-8")
+        else:
+            lane_detection_result = str(lane_detection_result)
 
-if st.button("get lane detection result"):
-    col1, col2 = st.columns(2)
-    if input_image:
-        lane_detection_process = process(input_image, lane_detection_backend)
-        lane_detection_image = Image.open(io.BytesIO(lane_detection_process.content)).convert("RGB")
+        lane_payload = json.loads(lane_detection_result)
+        lane_detection_result = lane_payload["detection_result"]
         
-        col1.header("Image")
-        col1.image(input_image, use_column_width=True)
-        col2.header("Lane Detection")
-        col2.image(lane_detection_image, use_column_width=True)
+        col1.header("Time")
+        col1.write(time_result)
+        col2.header("Weather")
+        col2.write(weather_result)
+        col3.header("Detection")
+        col3.write(detection_result)
+        col4.header("Lane detection")
+        col4.write(lane_detection_result)
+        
+if st.button("get lane detection result"):
+    col1, col2, col3 = st.columns(3)
+
+    if input_image:
+        # JSONResponse(content={"detection_result": detection_result})
+        lane_detection_process = process(input_image, lane_detection_backend)
+        lane_detection_result = lane_detection_process.content
+        if isinstance(lane_detection_result, bytes):
+            lane_detection_result = lane_detection_result.decode("utf-8")
+        else:
+            lane_detection_result = str(lane_detection_result)
+
+        payload          = json.loads(lane_detection_result)
+        lane_detection_result = payload["detection_result"]
+        img_b64          = payload["image"]
+        img_bytes        = base64.b64decode(img_b64)
+        
+        original_image = Image.open(input_image).convert("RGB")
+        detected_image = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+        col1.header("Original")
+        col1.image(original_image)
+        col2.header("Detected")
+        col2.image(detected_image)
+        col3.header("Detection Result")
+        col3.write(lane_detection_result)
+    else:
+        st.write("Insert an image!")
     
 # if st.button("Get segmentation map"):
 #     col1, col2 = st.columns(2)
@@ -243,7 +276,7 @@ if st.button("Get time classification"):
         original_image = Image.open(input_image).convert("RGB")
         # classified_image = Image.open(io.BytesIO(classifications.content)).convert("RGB")
         col1.header("Original")
-        col1.image(original_image, use_column_width=True)
+        col1.image(original_image)
         col2.header("Classified")
         col2.write(time_result)
     else:
@@ -258,25 +291,36 @@ if st.button("Get weather classification"):
         original_image = Image.open(input_image).convert("RGB")
         # classified_image = Image.open(io.BytesIO(classifications.content)).convert("RGB")
         col1.header("Original")
-        col1.image(original_image, use_column_width=True)
+        col1.image(original_image)
         col2.header("Classified")
         col2.write(weather_result)
     else:
         st.write("Insert an image!")
         
 if st.button("Get detection yolo map"):
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
 
     if input_image:
         # JSONResponse(content={"detection_result": detection_result})
         detection_process = process(input_image, detection_yolov10_backend)
         detection_result = detection_process.content
+        if isinstance(detection_result, bytes):
+            detection_result = detection_result.decode("utf-8")
+        else:
+            detection_result = str(detection_result)
+            
+        payload          = json.loads(detection_result)
+        detection_result = payload["detection_result"]
+        img_b64          = payload["image"]
+        img_bytes        = base64.b64decode(img_b64)
+        
         original_image = Image.open(input_image).convert("RGB")
-        # detected_image = Image.open(io.BytesIO(detections.content)).convert("RGB")
+        detected_image = Image.open(io.BytesIO(img_bytes)).convert("RGB")
         col1.header("Original")
-        col1.image(original_image, use_column_width=True)
+        col1.image(original_image)
         col2.header("Detected")
-        # col2.image(detected_image, use_column_width=True)
-        col2.write(detection_result)
+        col2.image(detected_image)
+        col3.header("Detection Result")
+        col3.write(detection_result)
     else:
         st.write("Insert an image!")        

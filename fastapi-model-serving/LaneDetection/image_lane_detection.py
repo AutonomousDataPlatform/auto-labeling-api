@@ -39,8 +39,9 @@ def get_lane_detections(model, file, device):
     rgb_img = ori_img.copy()
     ori_img = cv2.cvtColor(ori_img, cv2.COLOR_RGB2BGR)
     
-    cfg.ori_img_h, cfg.ori_img_w, _ = ori_img.shape
-    print(ori_img.shape)
+    ori_h, ori_w, _ = ori_img.shape
+    cfg.ori_img_h, cfg.ori_img_w = ori_h, ori_w
+    # print(ori_img.shape)
     if cfg.ori_img_w == 1280 and cfg.ori_img_h == 720:
         cfg.cut_height = 160
     elif cfg.ori_img_w == 1640 and cfg.ori_img_h == 590:
@@ -48,8 +49,11 @@ def get_lane_detections(model, file, device):
     elif cfg.ori_img_w == 1920 and cfg.ori_img_h == 1208:
         cfg.cut_height = 550
     else:
-        ori_img = resize_image(ori_img)
-        cfg.cut_height = 550
+        ori_img = resize_image(ori_img) # 1640x590
+        cfg.cut_height = 270
+        cfg.ori_img_h, cfg.ori_img_w, _ = ori_img.shape
+    sx = cfg.ori_img_w / ori_w
+    sy = cfg.ori_img_h / ori_h
             
     img = ori_img[cfg.cut_height:, :, :].astype(np.float32)
     data = {'img': img, 'lanes': []}
@@ -69,12 +73,15 @@ def get_lane_detections(model, file, device):
     
     lanes = [lane.to_array(cfg) for lane in data['lanes']]        
     lanes = [lane for lane in lanes if lane.size > 0]
+    
+    # 원본 이미지에 맞춰서 역 스케일
+    lanes_ori = [np.column_stack([lane[:, 0] / sx, lane[:, 1] / sy]) for lane in lanes]
         
-    image = imshow_lanes(rgb_img, lanes)
+    image = imshow_lanes(rgb_img, lanes_ori)
     
     image = Image.fromarray(image)
     
-    return image, lanes
+    return image, lanes_ori
 
 ## sub function
 def resize_keep_ratio(ori_img, target_w, target_h):
@@ -82,7 +89,7 @@ def resize_keep_ratio(ori_img, target_w, target_h):
     # 각 축마다 필요 스케일
     scale_w = target_w / w
     scale_h = target_h / h
-    # 둘 중 작은 스케일을 택해 '가장 빡빡한' 축에 맞춘다
+    # 둘 중 작은 스케일에 맞춘다
     scale = min(scale_w, scale_h)
 
     new_w, new_h = int(w * scale), int(h * scale)
@@ -90,18 +97,17 @@ def resize_keep_ratio(ori_img, target_w, target_h):
     return resized
 
 def resize_image(ori_img, color=(114,114,114)):
-    resized_img = resize_keep_ratio(ori_img, 1920, 1208)
+    resized_img = resize_keep_ratio(ori_img, 1640, 590)
     resized_h, resized_w = resized_img.shape[:2]
-    
-    pad_top = (1208 - resized_h)
+
+    pad_top = (590 - resized_h)
     pad_bottom = 0
-    pad_left = (1920 - resized_w) // 2
-    pad_right = (1920 - resized_w) - pad_left
-    
+    pad_left = (1640 - resized_w) // 2
+    pad_right = (1640 - resized_w) - pad_left
+
     padded_img = cv2.copyMakeBorder(resized_img, pad_top, pad_bottom, pad_left, pad_right, cv2.BORDER_CONSTANT, value=color)
 
     return padded_img
-
 
 def preprocess(file):
     img_h = 320

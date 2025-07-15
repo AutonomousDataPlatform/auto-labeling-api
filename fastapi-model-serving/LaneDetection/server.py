@@ -53,14 +53,4 @@ def get_lane_detection(file: bytes = File(...)):
     
     lane_detection = convert_to_serializable(lane_detection)
 
-    return JSONResponse(content={"image": image_b64, "detection_result": lane_detection})
-
-# @app.post("/test")
-# def get_classification_map(file: bytes = File(...)):
-#     """Get weather classification from image file"""
-#     weather_image, weather_class = get_weather_classifications(cls_model, file, device)
-#     # bytes_io = io.BytesIO()
-#     # weather_image.save(bytes_io, format="PNG")
-
-#     return JSONResponse(content={"weather_class": weather_class})
-#     # return Response(bytes_io.getvalue(), media_type="text/plane")
+    return JSONResponse(content={"detection_result": lane_detection, "image": image_b64})
