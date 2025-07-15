@@ -265,18 +265,29 @@ if st.button("Get weather classification"):
         st.write("Insert an image!")
         
 if st.button("Get detection yolo map"):
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
 
     if input_image:
         # JSONResponse(content={"detection_result": detection_result})
         detection_process = process(input_image, detection_yolov10_backend)
         detection_result = detection_process.content
+        if isinstance(detection_result, bytes):
+            detection_result = detection_result.decode("utf-8")
+        else:
+            detection_result = str(detection_result)
+            
+        payload          = json.loads(detection_result)
+        detection_result = payload["detection_result"]
+        img_b64          = payload["image"]
+        img_bytes        = base64.b64decode(img_b64)
+        
         original_image = Image.open(input_image).convert("RGB")
-        # detected_image = Image.open(io.BytesIO(detections.content)).convert("RGB")
+        detected_image = Image.open(io.BytesIO(img_bytes)).convert("RGB")
         col1.header("Original")
         col1.image(original_image, use_column_width=True)
         col2.header("Detected")
-        # col2.image(detected_image, use_column_width=True)
-        col2.write(detection_result)
+        col2.image(detected_image, use_column_width=True)
+        col3.header("Detection Result")
+        col3.write(detection_result)
     else:
         st.write("Insert an image!")        

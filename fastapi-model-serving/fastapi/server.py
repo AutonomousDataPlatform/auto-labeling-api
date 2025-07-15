@@ -9,6 +9,7 @@ from starlette.responses import Response, JSONResponse
 import torch
 from fastapi import FastAPI, File, UploadFile
 from PIL import Image
+import base64
 
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 seg_model = get_segmentator(device)
@@ -38,10 +39,11 @@ def get_detection_map(file: bytes = File(...)):
     """Get detection maps from image file"""
     detection_image, detection_result = get_image_detections_yolov10(det_model_yolov10, file)
     # print("detection_result: ", detection_result)
-    # bytes_io = io.BytesIO()
-    # detection_image.save(bytes_io, format="PNG")
-    # return Response(bytes_io.getvalue(), media_type="image/png"), 
-    return JSONResponse(content={"detection_result": detection_result})
+    bytes_io = io.BytesIO()
+    detection_image.save(bytes_io, format="PNG")
+    png_bytes = bytes_io.getvalue()
+    img_b64 = base64.b64encode(png_bytes).decode("utf-8")
+    return JSONResponse(content={"detection_result": detection_result, "image": img_b64})
 
 @app.post("/weather_classification")
 def get_classification_map(file: bytes = File(...)):
