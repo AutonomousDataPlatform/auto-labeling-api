@@ -5,6 +5,9 @@ import numpy as np
 class Lane:
     def __init__(self, points=None, invalid_value=-2., metadata=None):
         super(Lane, self).__init__()
+        order = np.argsort(points[:, 1])
+        points = points[order]
+        
         self.curr_iter = 0
         self.points = points
         self.invalid_value = invalid_value

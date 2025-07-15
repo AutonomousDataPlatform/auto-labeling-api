@@ -42,10 +42,13 @@ def get_lane_detections(model, file, device):
     cfg.ori_img_h, cfg.ori_img_w, _ = ori_img.shape
     print(ori_img.shape)
     if cfg.ori_img_w == 1280 and cfg.ori_img_h == 720:
-            cfg.cut_height = 160
+        cfg.cut_height = 160
     elif cfg.ori_img_w == 1640 and cfg.ori_img_h == 590:
         cfg.cut_height = 270
     elif cfg.ori_img_w == 1920 and cfg.ori_img_h == 1208:
+        cfg.cut_height = 550
+    else:
+        ori_img = resize_image(ori_img)
         cfg.cut_height = 550
             
     img = ori_img[cfg.cut_height:, :, :].astype(np.float32)
@@ -74,6 +77,32 @@ def get_lane_detections(model, file, device):
     return image, lanes
 
 ## sub function
+def resize_keep_ratio(ori_img, target_w, target_h):
+    h, w = ori_img.shape[:2]
+    # 각 축마다 필요 스케일
+    scale_w = target_w / w
+    scale_h = target_h / h
+    # 둘 중 작은 스케일을 택해 '가장 빡빡한' 축에 맞춘다
+    scale = min(scale_w, scale_h)
+
+    new_w, new_h = int(w * scale), int(h * scale)
+    resized = cv2.resize(ori_img, (new_w, new_h))
+    return resized
+
+def resize_image(ori_img, color=(114,114,114)):
+    resized_img = resize_keep_ratio(ori_img, 1920, 1208)
+    resized_h, resized_w = resized_img.shape[:2]
+    
+    pad_top = (1208 - resized_h)
+    pad_bottom = 0
+    pad_left = (1920 - resized_w) // 2
+    pad_right = (1920 - resized_w) - pad_left
+    
+    padded_img = cv2.copyMakeBorder(resized_img, pad_top, pad_bottom, pad_left, pad_right, cv2.BORDER_CONSTANT, value=color)
+
+    return padded_img
+
+
 def preprocess(file):
     img_h = 320
     img_w = 800
