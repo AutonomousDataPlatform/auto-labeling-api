@@ -208,7 +208,7 @@ class GenerateLaneLine(object):
                         'Transform annotation failed 30 times :(')
                     exit()
 
-        cv2.imwrite('qqq.png', img)
+        # cv2.imwrite('qqq.png', img)
         sample['img'] = img.astype(np.float32) / 255.
         sample['lane_line'] = label
         sample['lanes_endpoints'] = lane_endpoints
