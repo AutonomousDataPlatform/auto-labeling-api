@@ -8,6 +8,9 @@ import json
 import base64
 import numpy as np
 from fastapi import UploadFile
+import os
+import glob
+import zipfile
 
 # interact with FastAPI endpoint
 # segmentation_backend = "http://fastapi:8000/segmentation"
@@ -46,6 +49,89 @@ def process_image(uploade_file, server_url: str):
     )
     return r
 
+def process_image_to_json(input_image, image_backend, weather_classification_backend, time_classification_backend, detection_yolov10_backend, lane_detection_backend):
+    image_process = process_image(input_image, image_backend)
+    image_result = image_process.content
+    weather_process = process(input_image, weather_classification_backend)
+    weather_result = weather_process.content
+    time_process = process(input_image, time_classification_backend)
+    time_result = time_process.content
+    detection_process = process(input_image, detection_yolov10_backend)
+    detection_result = detection_process.content
+    lane_detection_process = process(input_image, lane_detection_backend)
+    lane_detection_result = lane_detection_process.content
+
+    if isinstance(weather_result, bytes):
+        weather_result = weather_result.decode("utf-8")
+    else:
+        str(weather_result)
+    if isinstance(time_result, bytes):
+        time_result = time_result.decode("utf-8")
+    else:
+        str(time_result)
+    if isinstance(detection_result, bytes):
+        detection_result = detection_result.decode("utf-8")
+    else:
+        str(detection_result)
+    if isinstance(lane_detection_result, bytes):
+        lane_detection_result = lane_detection_result.decode("utf-8")
+    else:
+        str(lane_detection_result)
+
+    image_data = json.loads(image_result)
+    image_info = image_data["image_info"]
+    weather_data = json.loads(weather_result)
+    weather_class = weather_data["weather_class"]
+    time_data = json.loads(time_result)
+    time_class = time_data["time_class"]
+    detection_data = json.loads(detection_result)
+    detection_list = detection_data["detection_result"]
+    lane_detection_data = json.loads(lane_detection_result)
+    lane_detection_list = lane_detection_data["detection_result"]
+
+    structured_result = {
+        "Image_information": {
+            "file_name": image_info["name"],
+            "width": image_info["width"],
+            "height": image_info["height"],
+            "format": image_info["format"],
+            "mode": image_info["mode"]
+        },
+        "Time_information": {
+            "class": time_class
+        },
+        "Weather_information": {
+            "class": weather_class
+        },
+        "Detection_information": {
+            "num_of_bbox": len(detection_list),
+            "bbox_info": []
+        },
+        "Lane_Detection_information": {
+            "num_of_lanes": len(lane_detection_list),
+            "lane_info": []
+        }
+    }
+    
+    for box in detection_list:
+        class_label = box[0]
+        x1, y1, x2, y2 = box[1], box[2], box[3], box[4]
+        
+        structured_result["Detection_information"]["bbox_info"].append({
+        "class": class_label,
+        "type": "Bounding_box",
+        "bbox_x1": x1,
+        "bbox_y1": y1,
+        "bbox_x2": x2,
+        "bbox_y2": y2
+    })
+    for lane in lane_detection_list:
+        structured_result["Lane_Detection_information"]["lane_info"].append({
+        "type": "Line",
+        "points": lane
+    })
+    return structured_result
+
 # construct UI layout
 st.title("[BigData] Auto-Labeling Web Frontend")
 
@@ -54,6 +140,44 @@ st.write(
          This Streamlit example uses a FastAPI service as backend.
          Visit this URL at `:8000/docs` for FastAPI documentation."""
 )  # description and instructions
+
+folder_path = st.text_input("Folder path")
+if st.button("File List") and folder_path:
+    folder_path = os.path.normpath(folder_path.strip(' "\''))
+    if not os.path.isdir(folder_path):
+        st.error("Invalid folder path!")
+        st.stop()
+
+    # 하위 디렉터리까지 jpg·png 탐색
+    pattern = os.path.join(folder_path, "**", "*.[pj][pn]g")   # *.jpg, *.png
+    img_paths = glob.glob(pattern, recursive=True)
+
+    if not img_paths:
+        st.warning("No images")
+    else:
+        st.success(f"Found {len(img_paths)} images")
+        # for p in sorted(img_paths):
+        #     st.markdown(f"• `{os.path.relpath(p, folder_path)}`")
+    
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
+        for p in img_paths:
+            with open(p, 'rb') as f:
+                img_bytes = f.read()
+            file_like = io.BytesIO(img_bytes)
+            file_like.name = os.path.basename(p)  # Set the name of the file-like
+            structured_result = process_image_to_json(file_like, image_backend, weather_classification_backend, time_classification_backend, detection_yolov10_backend, lane_detection_backend)
+            json_str = json.dumps(structured_result, indent=4)
+            json_filename = os.path.splitext(os.path.basename(p))[0] + ".json"
+            zip_file.writestr(json_filename, json_str)
+    zip_buffer.seek(0)
+    
+    st.download_button(
+        label="Download JSON Results",
+        data=zip_buffer,
+        file_name="results.zip",
+        mime="application/zip"
+    )
 
 input_image = st.file_uploader("Insert image")  # image upload widget
 
@@ -324,3 +448,4 @@ if st.button("Get detection yolo map"):
         col3.write(detection_result)
     else:
         st.write("Insert an image!")        
+    
