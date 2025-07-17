@@ -90,34 +90,38 @@ def process_image_to_json(input_image, image_backend, weather_classification_bac
     lane_detection_list = lane_detection_data["detection_result"]
 
     structured_result = {
-        "Image_information": {
-            "file_name": image_info["name"],
-            "width": image_info["width"],
-            "height": image_info["height"],
-            "format": image_info["format"],
-            "mode": image_info["mode"]
+        "Original_calib": {},
+        "Original_label": {},
+        "Auto_labeling": {
+            "Image_information": {
+                "file_name": image_info["name"],
+                "width": image_info["width"],
+                "height": image_info["height"],
+                "format": image_info["format"],
+                "mode": image_info["mode"]
+            },
+            "Time_information": {
+                "class": time_class
+            },
+            "Weather_information": {
+                "class": weather_class
+            },
+            "Detection_information": {
+                "num_of_bbox": len(detection_list),
+                "bbox_info": []
+            },
+            "Lane_Detection_information": {
+                "num_of_lanes": len(lane_detection_list),
+                "lane_info": []
+            }
         },
-        "Time_information": {
-            "class": time_class
-        },
-        "Weather_information": {
-            "class": weather_class
-        },
-        "Detection_information": {
-            "num_of_bbox": len(detection_list),
-            "bbox_info": []
-        },
-        "Lane_Detection_information": {
-            "num_of_lanes": len(lane_detection_list),
-            "lane_info": []
-        }
     }
     
     for box in detection_list:
         class_label = box[0]
         x1, y1, x2, y2 = box[1], box[2], box[3], box[4]
         
-        structured_result["Detection_information"]["bbox_info"].append({
+        structured_result["Auto_labeling"]["Detection_information"]["bbox_info"].append({
         "class": class_label,
         "type": "Bounding_box",
         "bbox_x1": x1,
@@ -126,11 +130,18 @@ def process_image_to_json(input_image, image_backend, weather_classification_bac
         "bbox_y2": y2
     })
     for lane in lane_detection_list:
-        structured_result["Lane_Detection_information"]["lane_info"].append({
+        structured_result["Auto_labeling"]["Lane_Detection_information"]["lane_info"].append({
         "type": "Line",
         "points": lane
     })
     return structured_result
+
+def read_text_if_exists(path):
+    """경로가 존재하면 텍스트 반환, 없으면 빈 문자열"""
+    if not os.path.exists(path):
+        return []
+    with open(path, "r") as f:
+        return [line.rstrip("\n") for line in f]
 
 # construct UI layout
 st.title("[BigData] Auto-Labeling Web Frontend")
@@ -162,11 +173,19 @@ if st.button("File List") and folder_path:
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
         for p in img_paths:
+            stem = os.path.splitext(os.path.basename(p))[0]
+            label_txt = os.path.join(folder_path, "label_2", stem + ".txt")
+            calib_txt = os.path.join(folder_path, "calib", stem + ".txt")
+            
             with open(p, 'rb') as f:
                 img_bytes = f.read()
             file_like = io.BytesIO(img_bytes)
             file_like.name = os.path.basename(p)  # Set the name of the file-like
             structured_result = process_image_to_json(file_like, image_backend, weather_classification_backend, time_classification_backend, detection_yolov10_backend, lane_detection_backend)
+            
+            structured_result["Original_calib"] = read_text_if_exists(calib_txt)
+            structured_result["Original_label"] = read_text_if_exists(label_txt)
+            
             json_str = json.dumps(structured_result, indent=4)
             json_filename = os.path.splitext(os.path.basename(p))[0] + ".json"
             zip_file.writestr(json_filename, json_str)
