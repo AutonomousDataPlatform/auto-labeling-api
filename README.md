@@ -46,6 +46,35 @@ Install torch and libraries.
     pip install --no-cache-dir "shapely>=2.0.2"
     pip install "numpy<2"
 
+### weights
+
+Download weights file from the link below
+
+    https://drive.google.com/file/d/1l-kcpUYy8bWjt1u4kffJ152HymvkGfde/view?usp=drive_link
+
+Extract file
+
+    unzip weights.zip
+
+You will find the following two folders after extraction
+    
+    fastapi
+      └─ weights
+    LaneDetection
+      └─ weights
+Then, move folders (name: weights) below to the specified directions
+
+    fastapi              -->    auto-labeling-api
+      └─ weights                  ├─ fastapi-model-serving
+                                      ├─ fastapi
+                                          ├─ weights
+    
+    LaneDetection        -->    auto-labeling-api
+      └─ weights                  ├─ fastapi-model-serving
+                                      ├─ LaneDetection
+                                          ├─ weights
+
+
 ## 2. Run
 
 Terminal 1
