@@ -56,21 +56,21 @@ Extract file
 
     unzip weights.zip
 
-You will find the following folder after extraction
+You will find the following two folders after extraction
     
     fastapi
-      ├─ weights
+      └─ weights
     LaneDetection
-      ├─ weights
-Then, move folder (name: weights) below to the specified directions
+      └─ weights
+Then, move folders (name: weights) below to the specified directions
 
     fastapi              -->    auto-labeling-api
-      ├─ weights                  ├─ fastapi-model-serving
+      └─ weights                  ├─ fastapi-model-serving
                                       ├─ fastapi
                                           ├─ weights
     
     LaneDetection        -->    auto-labeling-api
-      ├─ weights                  ├─ fastapi-model-serving
+      └─ weights                  ├─ fastapi-model-serving
                                       ├─ LaneDetection
                                           ├─ weights
 
