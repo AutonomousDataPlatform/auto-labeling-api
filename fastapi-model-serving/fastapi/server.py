@@ -2,9 +2,9 @@ import io
 
 from segmentation import get_segmentator, get_segments
 from detection import get_detector, get_detections
-from image_detection_yolov10 import get_image_detector_yolov10, get_image_detections_yolov10
-from weather_classification import get_classifier, get_weather_classifications
-from time_classification import get_classifier, get_time_classifications
+from image_detection_yolo import get_image_detector_yolo, get_image_detections_yolo
+from weather_classification import get_weather_classifier, get_weather_classifications
+from time_classification import get_time_classifier, get_time_classifications
 from starlette.responses import Response, JSONResponse
 import torch
 from fastapi import FastAPI, File, UploadFile
@@ -15,8 +15,9 @@ device = "cuda:0" if torch.cuda.is_available() else "cpu"
 seg_model = get_segmentator(device)
 det_model = get_detector(device)
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
-cls_model = get_classifier(device)
-det_model_yolov10 = get_image_detector_yolov10(device)
+cls_model_time = get_time_classifier(device)
+cls_model_weather = get_weather_classifier(device)
+det_model_yolo = get_image_detector_yolo(device)
 
 app = FastAPI(
     title="[BigData] Auto-Labeling API Server",
@@ -34,10 +35,10 @@ def get_segmentation_map(file: bytes = File(...)):
     segmented_image.save(bytes_io, format="PNG")
     return Response(bytes_io.getvalue(), media_type="image/png")
 
-@app.post("/detection_yolov10")
+@app.post("/detection_yolo")
 def get_detection_map(file: bytes = File(...)):
     """Get detection maps from image file"""
-    detection_image, detection_result = get_image_detections_yolov10(det_model_yolov10, file)
+    detection_image, detection_result = get_image_detections_yolo(det_model_yolo, file)
     # print("detection_result: ", detection_result)
     bytes_io = io.BytesIO()
     detection_image.save(bytes_io, format="PNG")
@@ -48,7 +49,7 @@ def get_detection_map(file: bytes = File(...)):
 @app.post("/weather_classification")
 def get_classification_map(file: bytes = File(...)):
     """Get weather classification from image file"""
-    weather_image, weather_class = get_weather_classifications(cls_model, file, device)
+    weather_image, weather_class = get_weather_classifications(cls_model_weather, file, device)
     # bytes_io = io.BytesIO()
     # weather_image.save(bytes_io, format="PNG")
 
@@ -58,7 +59,7 @@ def get_classification_map(file: bytes = File(...)):
 @app.post("/time_classification")
 def get_classification_time(file: bytes = File(...)):
     """Get time classification from image file"""
-    time_image, time_class = get_time_classifications(cls_model, file, device)
+    time_image, time_class = get_time_classifications(cls_model_time, file, device)
     # bytes_io = io.BytesIO()
     # weather_image.save(bytes_io, format="PNG")
 

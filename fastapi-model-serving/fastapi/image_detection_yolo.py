@@ -9,9 +9,9 @@ import cv2
 import numpy as np
 import os
 
-def get_image_detector_yolov10(device = 'cpu'):
+def get_image_detector_yolo(device = 'cpu'):
     # model = YOLOv10.from_pretrained('jameslahm/yolov10m')
-    model = YOLO("yolov10m.pt")
+    model = YOLO("yolo11x.pt")
     model = model.to(device)
     return model
 
@@ -27,7 +27,7 @@ def numpy_to_json(array):
         'data': array_b64
     })
     
-def get_image_detections_yolov10(model, binary_image, threshold=0.5):
+def get_image_detections_yolo(model, binary_image, threshold=0.5):
     input_image = Image.open(io.BytesIO(binary_image)).convert("RGB")
     
     result = model.predict(input_image)
