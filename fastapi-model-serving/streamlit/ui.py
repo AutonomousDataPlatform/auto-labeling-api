@@ -24,7 +24,7 @@ def dict_to_numpy(json_str):
     return np.frombuffer(array_bytes, dtype=decoded['dtype']).reshape(decoded['shape'])
 
 segmentation_backend = "http://localhost:8000/segmentation"
-detection_yolov10_backend = "http://localhost:8000/detection_yolov10"
+detection_yolo_backend = "http://localhost:8000/detection_yolo"
 weather_classification_backend = "http://localhost:8000/weather_classification"
 time_classification_backend = "http://localhost:8000/time_classification"
 image_backend = "http://localhost:8000/image"
@@ -64,7 +64,7 @@ if input_image:
     weather_result = weather_process.content
     time_process = process(input_image, time_classification_backend)
     time_result = time_process.content
-    detection_process = process(input_image, detection_yolov10_backend)
+    detection_process = process(input_image, detection_yolo_backend)
     detection_result = detection_process.content
     lane_detection_process = process(input_image, lane_detection_backend)
     lane_detection_result = lane_detection_process.content
@@ -196,7 +196,7 @@ if st.button("get total result"):
         time_process = process(input_image, time_classification_backend)
         time_result = time_process.content
         
-        detection_process = process(input_image, detection_yolov10_backend)
+        detection_process = process(input_image, detection_yolo_backend)
         detection_result = detection_process.content
         if isinstance(detection_result, bytes):
             detection_result = detection_result.decode("utf-8")
@@ -302,7 +302,7 @@ if st.button("Get detection yolo map"):
 
     if input_image:
         # JSONResponse(content={"detection_result": detection_result})
-        detection_process = process(input_image, detection_yolov10_backend)
+        detection_process = process(input_image, detection_yolo_backend)
         detection_result = detection_process.content
         if isinstance(detection_result, bytes):
             detection_result = detection_result.decode("utf-8")
