@@ -162,3 +162,5 @@ cython_debug/
 #.idea/
 
 fastapi-model-serving/fastapi/yolo11x.pt
+fastapi-model-serving/fastapi/yolov10m.pt
+fastapi-model-serving/LaneDetection/weights
