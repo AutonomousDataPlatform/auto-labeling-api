@@ -50,7 +50,7 @@ Install torch and libraries.
 
 Download weights file from the link below
 
-    https://drive.google.com/file/d/1l-kcpUYy8bWjt1u4kffJ152HymvkGfde/view?usp=drive_link
+    https://drive.google.com/file/d/1Ey6WLbdzGrsOzyuvhFaFV653Tjxe1Tn6/view?usp=sharing
 
 Extract file
 
@@ -60,19 +60,21 @@ You will find the following two folders after extraction
     
     fastapi
       └─ weights
+      └─ yolo11x_finetuned_kitti.pt
     LaneDetection
       └─ weights
 Then, move folders (name: weights) below to the specified directions
 
-    fastapi              -->    auto-labeling-api
-      └─ weights                  ├─ fastapi-model-serving
-                                      ├─ fastapi
-                                          ├─ weights
+    fastapi                         -->    auto-labeling-api
+      └─ weights                            ├─ fastapi-model-serving
+      └─ yolo11x_finetuned_kitti.pt             ├─ fastapi
+                                                    ├─ weights
+                                                    └─ yolo11x_finetuned_kitti.pt
     
-    LaneDetection        -->    auto-labeling-api
-      └─ weights                  ├─ fastapi-model-serving
-                                      ├─ LaneDetection
-                                          ├─ weights
+    LaneDetection                   -->    auto-labeling-api
+      └─ weights                            ├─ fastapi-model-serving
+                                                ├─ LaneDetection
+                                                    ├─ weights
 
 
 ## 2. Run
