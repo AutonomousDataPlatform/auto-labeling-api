@@ -11,7 +11,7 @@ import os
 
 def get_image_detector_yolo(device = 'cpu'):
     # model = YOLOv10.from_pretrained('jameslahm/yolov10m')
-    model = YOLO("yolo11x.pt")
+    model = YOLO("yolo11x_finetuned_kitti.pt")
     model = model.to(device)
     return model
 
