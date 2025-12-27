@@ -30,7 +30,8 @@ def numpy_to_json(array):
 def get_image_detections_yolo(model, binary_image, threshold=0.5):
     input_image = Image.open(io.BytesIO(binary_image)).convert("RGB")
     
-    result = model.predict(input_image)
+    # Disable augmentation for consistent inference results
+    result = model.predict(input_image, augment=False)
     json_results = json.loads(result[0].to_json())
     ret_list = []
     for json_result in json_results:
