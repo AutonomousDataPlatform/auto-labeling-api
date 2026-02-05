@@ -3,6 +3,7 @@ import io
 from segmentation import get_segmentator, get_segments
 from detection import get_detector, get_detections
 from image_detection_yolo import get_image_detector_yolo, get_image_detections_yolo
+from image_detection_gpt import get_image_detector_gpt, get_image_detections_gpt
 from weather_classification import get_weather_classifier, get_weather_classifications
 from time_classification import get_time_classifier, get_time_classifications
 from starlette.responses import Response, JSONResponse
@@ -18,6 +19,7 @@ device = "cuda:0" if torch.cuda.is_available() else "cpu"
 cls_model_time = get_time_classifier(device)
 cls_model_weather = get_weather_classifier(device)
 det_model_yolo = get_image_detector_yolo(device)
+det_model_gpt = get_image_detector_gpt()
 
 app = FastAPI(
     title="[BigData] Auto-Labeling API Server",
@@ -45,6 +47,17 @@ def get_detection_map(file: bytes = File(...)):
     png_bytes = bytes_io.getvalue()
     img_b64 = base64.b64encode(png_bytes).decode("utf-8")
     return JSONResponse(content={"detection_result": detection_result, "image": img_b64})
+
+@app.post("/detection_gpt")
+def get_detection_map(file: bytes = File(...)):
+    """Get detection maps from image file"""
+    detection_image, detection_gpt_result = get_image_detections_gpt(det_model_gpt, file)
+    # print("detection_result: ", detection_result)
+    bytes_io = io.BytesIO()
+    detection_image.save(bytes_io, format="PNG")
+    png_bytes = bytes_io.getvalue()
+    img_b64 = base64.b64encode(png_bytes).decode("utf-8")
+    return JSONResponse(content={"detection_gpt_result": detection_gpt_result, "image": img_b64})
 
 @app.post("/weather_classification")
 def get_classification_map(file: bytes = File(...)):

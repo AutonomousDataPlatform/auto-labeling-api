@@ -28,6 +28,7 @@ def dict_to_numpy(json_str):
 
 segmentation_backend = "http://localhost:8000/segmentation"
 detection_yolo_backend = "http://localhost:8000/detection_yolo"
+detection_gpt_backend = "http://localhost:8000/detection_gpt"
 weather_classification_backend = "http://localhost:8000/weather_classification"
 time_classification_backend = "http://localhost:8000/time_classification"
 image_backend = "http://localhost:8000/image"
@@ -49,7 +50,7 @@ def process_image(uploade_file, server_url: str):
     )
     return r
 
-def process_image_to_json(input_image, image_backend, weather_classification_backend, time_classification_backend, detection_yolov10_backend, lane_detection_backend):
+def process_image_to_json(input_image, image_backend, weather_classification_backend, time_classification_backend, detection_yolov10_backend, lane_detection_backend, detection_gpt_backend):
     image_process = process_image(input_image, image_backend)
     image_result = image_process.content
     weather_process = process(input_image, weather_classification_backend)
@@ -60,6 +61,8 @@ def process_image_to_json(input_image, image_backend, weather_classification_bac
     detection_result = detection_process.content
     lane_detection_process = process(input_image, lane_detection_backend)
     lane_detection_result = lane_detection_process.content
+    detection_gpt_process = process(input_image, detection_gpt_backend)
+    detection_gpt_result = detection_gpt_process.content
 
     if isinstance(weather_result, bytes):
         weather_result = weather_result.decode("utf-8")
@@ -77,6 +80,10 @@ def process_image_to_json(input_image, image_backend, weather_classification_bac
         lane_detection_result = lane_detection_result.decode("utf-8")
     else:
         str(lane_detection_result)
+    if isinstance(detection_gpt_result, bytes):
+        detection_gpt_result = detection_gpt_result.decode("utf-8")
+    else:
+        str(detection_gpt_result)
 
     image_data = json.loads(image_result)
     image_info = image_data["image_info"]
@@ -88,7 +95,9 @@ def process_image_to_json(input_image, image_backend, weather_classification_bac
     detection_list = detection_data["detection_result"]
     lane_detection_data = json.loads(lane_detection_result)
     lane_detection_list = lane_detection_data["detection_result"]
-
+    detection_gpt_data = json.loads(detection_gpt_result)
+    detection_gpt_list = detection_gpt_data["detection_result"]
+    
     structured_result = {
         "Original_calib": {},
         "Original_label": {},
@@ -110,6 +119,10 @@ def process_image_to_json(input_image, image_backend, weather_classification_bac
                 "num_of_bbox": len(detection_list),
                 "bbox_info": []
             },
+            "Detection_gpt_information": {
+                "num_of_bbox": len(detection_gpt_list),
+                "bbox_info": []
+            },
             "Lane_Detection_information": {
                 "num_of_lanes": len(lane_detection_list),
                 "lane_info": []
@@ -122,6 +135,18 @@ def process_image_to_json(input_image, image_backend, weather_classification_bac
         x1, y1, x2, y2 = box[1], box[2], box[3], box[4]
         
         structured_result["Auto_labeling"]["Detection_information"]["bbox_info"].append({
+        "class": class_label,
+        "type": "Bounding_box",
+        "bbox_x1": x1,
+        "bbox_y1": y1,
+        "bbox_x2": x2,
+        "bbox_y2": y2
+    })
+    for box in detection_gpt_list:
+        class_label = box[0]
+        x1, y1, x2, y2 = box[1], box[2], box[3], box[4]
+        
+        structured_result["Auto_labeling"]["Detection_gpt_information"]["bbox_info"].append({
         "class": class_label,
         "type": "Bounding_box",
         "bbox_x1": x1,
@@ -209,6 +234,8 @@ if input_image:
     time_result = time_process.content
     detection_process = process(input_image, detection_yolo_backend)
     detection_result = detection_process.content
+    detection_gpt_process = process(input_image, detection_gpt_backend)
+    detection_gpt_result = detection_gpt_process.content
     lane_detection_process = process(input_image, lane_detection_backend)
     lane_detection_result = lane_detection_process.content
 
@@ -228,6 +255,10 @@ if input_image:
         lane_detection_result = lane_detection_result.decode("utf-8")
     else:
         str(lane_detection_result)
+    if isinstance(detection_gpt_result, bytes):
+        detection_gpt_result = detection_gpt_result.decode("utf-8")
+    else:
+        str(detection_gpt_result)
 
     image_data = json.loads(image_result)
     image_info = image_data["image_info"]
@@ -237,6 +268,8 @@ if input_image:
     time_class = time_data["time_class"]
     detection_data = json.loads(detection_result)
     detection_list = detection_data["detection_result"]
+    detection_gpt_data = json.loads(detection_gpt_result)
+    detection_gpt_list = detection_gpt_data["detection_gpt_result"]
     lane_detection_data = json.loads(lane_detection_result)
     lane_detection_list = lane_detection_data["detection_result"]
 
@@ -258,6 +291,10 @@ if input_image:
             "num_of_bbox": len(detection_list),
             "bbox_info": []
         },
+        "Detection_gpt_information": {
+            "num_of_bbox": len(detection_gpt_list),
+            "bbox_info": []
+        },
         "Lane_Detection_information": {
             "num_of_lanes": len(lane_detection_list),
             "lane_info": []
@@ -269,6 +306,18 @@ if input_image:
         x1, y1, x2, y2 = box[1], box[2], box[3], box[4]
         
         structured_result["Detection_information"]["bbox_info"].append({
+        "class": class_label,
+        "type": "Bounding_box",
+        "bbox_x1": x1,
+        "bbox_y1": y1,
+        "bbox_x2": x2,
+        "bbox_y2": y2
+    })
+    for box in detection_gpt_list:
+        class_label = box[0]
+        x1, y1, x2, y2 = box[1], box[2], box[3], box[4]
+        
+        structured_result["Detection_gpt_information"]["bbox_info"].append({
         "class": class_label,
         "type": "Bounding_box",
         "bbox_x1": x1,
@@ -332,7 +381,7 @@ if input_image:
 #         st.error("Insert an image!")
 
 if st.button("get total result"):
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4, col5 = st.columns(5)
     if input_image:
         weather_process = process(input_image, weather_classification_backend)
         weather_result = weather_process.content
@@ -348,6 +397,16 @@ if st.button("get total result"):
             
         payload = json.loads(detection_result)
         detection_result = payload["detection_result"]
+        
+        detection_gpt_process = process(input_image, detection_gpt_backend)
+        detection_gpt_result = detection_gpt_process.content
+        if isinstance(detection_gpt_result, bytes):
+            detection_gpt_result = detection_gpt_result.decode("utf-8")
+        else:
+            detection_gpt_result = str(detection_gpt_result)
+            
+        payload = json.loads(detection_gpt_result)
+        detection_gpt_result = payload["detection_gpt_result"]
         
         lane_detection_process = process(input_image, lane_detection_backend)
         lane_detection_result = lane_detection_process.content
@@ -365,8 +424,10 @@ if st.button("get total result"):
         col2.write(weather_result)
         col3.header("Detection")
         col3.write(detection_result)
-        col4.header("Lane detection")
-        col4.write(lane_detection_result)
+        col4.header("Detection_gpt")
+        col4.write(detection_gpt_result)
+        col5.header("Lane detection")
+        col5.write(lane_detection_result)
         
 if st.button("get lane detection result"):
     col1, col2, col3 = st.columns(3)
@@ -468,3 +529,30 @@ if st.button("Get detection yolo map"):
     else:
         st.write("Insert an image!")        
     
+if st.button("Get detection gpt"):
+    col1, col2, col3 = st.columns(3)
+
+    if input_image:
+        # JSONResponse(content={"detection_result": detection_result})
+        detection_gpt_process = process(input_image, detection_gpt_backend)
+        detection_gpt_result = detection_gpt_process.content
+        if isinstance(detection_gpt_result, bytes):
+            detection_gpt_result = detection_gpt_result.decode("utf-8")
+        else:
+            detection_gpt_result = str(detection_gpt_result)
+            
+        payload          = json.loads(detection_gpt_result)
+        detection_gpt_result = payload["detection_gpt_result"]
+        img_b64          = payload["image"]
+        img_bytes        = base64.b64decode(img_b64)
+        
+        original_image = Image.open(input_image).convert("RGB")
+        detected_image = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+        col1.header("Original")
+        col1.image(original_image)
+        col2.header("Detected")
+        col2.image(detected_image)
+        col3.header("Detection Result")
+        col3.write(detection_gpt_result)
+    else:
+        st.write("Insert an image!")
