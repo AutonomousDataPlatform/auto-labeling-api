@@ -30,6 +30,7 @@ segmentation_backend = "http://localhost:8000/segmentation"
 detection_yolo_backend = "http://localhost:8000/detection_yolo"
 detection_gpt_backend = "http://localhost:8000/detection_gpt"
 weather_classification_backend = "http://localhost:8000/weather_classification"
+weather_classification_clip_backend = "http://localhost:8000/weather_classification_clip"
 time_classification_backend = "http://localhost:8000/time_classification"
 image_backend = "http://localhost:8000/image"
 lane_detection_backend = "http://localhost:8001/lane_detection"
@@ -50,11 +51,13 @@ def process_image(uploade_file, server_url: str):
     )
     return r
 
-def process_image_to_json(input_image, image_backend, weather_classification_backend, time_classification_backend, detection_yolov10_backend, lane_detection_backend, detection_gpt_backend):
+def process_image_to_json(input_image, image_backend, weather_classification_backend, time_classification_backend, detection_yolov10_backend, lane_detection_backend, detection_gpt_backend, weather_classification_clip_backend):
     image_process = process_image(input_image, image_backend)
     image_result = image_process.content
     weather_process = process(input_image, weather_classification_backend)
     weather_result = weather_process.content
+    weather_clip_process = process(input_image, weather_classification_clip_backend)
+    weather_clip_result = weather_clip_process.content
     time_process = process(input_image, time_classification_backend)
     time_result = time_process.content
     detection_process = process(input_image, detection_yolov10_backend)
@@ -84,6 +87,10 @@ def process_image_to_json(input_image, image_backend, weather_classification_bac
         detection_gpt_result = detection_gpt_result.decode("utf-8")
     else:
         str(detection_gpt_result)
+    if isinstance(weather_clip_result, bytes):
+        weather_clip_result = weather_clip_result.decode("utf-8")
+    else:
+        str(weather_clip_result)
 
     image_data = json.loads(image_result)
     image_info = image_data["image_info"]
@@ -97,6 +104,8 @@ def process_image_to_json(input_image, image_backend, weather_classification_bac
     lane_detection_list = lane_detection_data["detection_result"]
     detection_gpt_data = json.loads(detection_gpt_result)
     detection_gpt_list = detection_gpt_data["detection_result"]
+    weather_clip_data = json.loads(weather_clip_result)
+    weather_clip_class = weather_clip_data["weather_class_clip"]
     
     structured_result = {
         "Original_calib": {},
@@ -114,6 +123,9 @@ def process_image_to_json(input_image, image_backend, weather_classification_bac
             },
             "Weather_information": {
                 "class": weather_class
+            },
+            "Weather_clip_information": {
+                "class": weather_clip_class
             },
             "Detection_information": {
                 "num_of_bbox": len(detection_list),
@@ -230,6 +242,8 @@ if input_image:
     image_result = image_process.content
     weather_process = process(input_image, weather_classification_backend)
     weather_result = weather_process.content
+    weather_clip_process = process(input_image, weather_classification_clip_backend)
+    weather_clip_result = weather_clip_process.content
     time_process = process(input_image, time_classification_backend)
     time_result = time_process.content
     detection_process = process(input_image, detection_yolo_backend)
@@ -259,11 +273,17 @@ if input_image:
         detection_gpt_result = detection_gpt_result.decode("utf-8")
     else:
         str(detection_gpt_result)
+    if isinstance(weather_clip_result, bytes):
+        weather_clip_result = weather_clip_result.decode("utf-8")
+    else:
+        str(weather_clip_result)
 
     image_data = json.loads(image_result)
     image_info = image_data["image_info"]
     weather_data = json.loads(weather_result)
     weather_class = weather_data["weather_class"]
+    weather_clip_data = json.loads(weather_clip_result)
+    weather_clip_class = weather_clip_data["weather_class_clip"]
     time_data = json.loads(time_result)
     time_class = time_data["time_class"]
     detection_data = json.loads(detection_result)
@@ -286,6 +306,9 @@ if input_image:
         },
         "Weather_information": {
             "class": weather_class
+        },
+        "Weather_clip_information": {
+            "class": weather_clip_class
         },
         "Detection_information": {
             "num_of_bbox": len(detection_list),
@@ -381,10 +404,12 @@ if input_image:
 #         st.error("Insert an image!")
 
 if st.button("get total result"):
-    col1, col2, col3, col4, col5 = st.columns(5)
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
     if input_image:
         weather_process = process(input_image, weather_classification_backend)
         weather_result = weather_process.content
+        weather_clip_process = process(input_image, weather_classification_clip_backend)
+        weather_clip_result = weather_clip_process.content
         time_process = process(input_image, time_classification_backend)
         time_result = time_process.content
         
@@ -428,6 +453,8 @@ if st.button("get total result"):
         col4.write(detection_gpt_result)
         col5.header("Lane detection")
         col5.write(lane_detection_result)
+        col6.header("Weather_clip")
+        col6.write(weather_clip_result)
         
 if st.button("get lane detection result"):
     col1, col2, col3 = st.columns(3)
@@ -498,6 +525,21 @@ if st.button("Get weather classification"):
         col1.image(original_image)
         col2.header("Classified")
         col2.write(weather_result)
+    else:
+        st.write("Insert an image!")
+        
+if st.button("Get weather classification CLIP"):
+    col1, col2 = st.columns(2)
+
+    if input_image:
+        weather_clip_process = process(input_image, weather_classification_clip_backend)
+        weather_clip_result = weather_clip_process.content
+        original_image = Image.open(input_image).convert("RGB")
+        # classified_image = Image.open(io.BytesIO(classifications.content)).convert("RGB")
+        col1.header("Original")
+        col1.image(original_image)
+        col2.header("Classified")
+        col2.write(weather_clip_result)
     else:
         st.write("Insert an image!")
         

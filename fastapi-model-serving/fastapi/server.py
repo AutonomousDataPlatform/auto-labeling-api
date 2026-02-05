@@ -5,6 +5,7 @@ from detection import get_detector, get_detections
 from image_detection_yolo import get_image_detector_yolo, get_image_detections_yolo
 from image_detection_gpt import get_image_detector_gpt, get_image_detections_gpt
 from weather_classification import get_weather_classifier, get_weather_classifications
+from weather_classification_clip import get_weather_classifier_clip, get_weather_classifications_clip
 from time_classification import get_time_classifier, get_time_classifications
 from starlette.responses import Response, JSONResponse
 import torch
@@ -18,6 +19,7 @@ det_model = get_detector(device)
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 cls_model_time = get_time_classifier(device)
 cls_model_weather = get_weather_classifier(device)
+cls_model_weather_clip, preprocess_clip = get_weather_classifier_clip(device)
 det_model_yolo = get_image_detector_yolo(device)
 det_model_gpt = get_image_detector_gpt()
 
@@ -67,6 +69,16 @@ def get_classification_map(file: bytes = File(...)):
     # weather_image.save(bytes_io, format="PNG")
 
     return JSONResponse(content={"weather_class": weather_class})
+    # return Response(bytes_io.getvalue(), media_type="text/plane")
+    
+@app.post("/weather_classification_clip")
+def get_classification_map(file: bytes = File(...)):
+    """Get weather classification from image file"""
+    weather_image, weather_class = get_weather_classifications_clip(cls_model_weather_clip, preprocess_clip, file, device)
+    # bytes_io = io.BytesIO()
+    # weather_image.save(bytes_io, format="PNG")
+
+    return JSONResponse(content={"weather_class_clip": weather_class})
     # return Response(bytes_io.getvalue(), media_type="text/plane")
 
 @app.post("/time_classification")
