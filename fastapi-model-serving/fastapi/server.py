@@ -7,6 +7,7 @@ from image_detection_gpt import get_image_detector_gpt, get_image_detections_gpt
 from weather_classification import get_weather_classifier, get_weather_classifications
 from weather_classification_clip import get_weather_classifier_clip, get_weather_classifications_clip
 from time_classification import get_time_classifier, get_time_classifications
+from time_classification_clip import get_time_classifier_clip, get_time_classifications_clip
 from starlette.responses import Response, JSONResponse
 import torch
 from fastapi import FastAPI, File, UploadFile
@@ -16,10 +17,11 @@ import base64
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 seg_model = get_segmentator(device)
 det_model = get_detector(device)
-device = "cuda:0" if torch.cuda.is_available() else "cpu"
+
 cls_model_time = get_time_classifier(device)
+cls_model_time_clip, preprocess_time_clip = get_time_classifier_clip(device)
 cls_model_weather = get_weather_classifier(device)
-cls_model_weather_clip, preprocess_clip = get_weather_classifier_clip(device)
+cls_model_weather_clip, preprocess_weather_clip = get_weather_classifier_clip(device)
 det_model_yolo = get_image_detector_yolo(device)
 det_model_gpt = get_image_detector_gpt()
 
@@ -74,7 +76,7 @@ def get_classification_map(file: bytes = File(...)):
 @app.post("/weather_classification_clip")
 def get_classification_map(file: bytes = File(...)):
     """Get weather classification from image file"""
-    weather_image, weather_class = get_weather_classifications_clip(cls_model_weather_clip, preprocess_clip, file, device)
+    weather_image, weather_class = get_weather_classifications_clip(cls_model_weather_clip, preprocess_weather_clip, file, device)
     # bytes_io = io.BytesIO()
     # weather_image.save(bytes_io, format="PNG")
 
@@ -89,6 +91,16 @@ def get_classification_time(file: bytes = File(...)):
     # weather_image.save(bytes_io, format="PNG")
 
     return JSONResponse(content={"time_class": time_class})
+    # return Response(bytes_io.getvalue(), media_type="text/plane")
+    
+@app.post("/time_classification_clip")
+def get_classification_time(file: bytes = File(...)):
+    """Get time classification from image file"""
+    time_image, time_class = get_time_classifications_clip(cls_model_time_clip, preprocess_time_clip, file, device)
+    # bytes_io = io.BytesIO()
+    # weather_image.save(bytes_io, format="PNG")
+
+    return JSONResponse(content={"time_class_clip": time_class})
     # return Response(bytes_io.getvalue(), media_type="text/plane")
     
 @app.post("/image")

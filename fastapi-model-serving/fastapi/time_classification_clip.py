@@ -4,15 +4,15 @@ import clip
 from PIL import Image
 
     
-def get_weather_classifier_clip(device = 'cpu'):
+def get_time_classifier_clip(device = 'cpu'):
     # Load the EfficientNet model
     model, preprocess = clip.load("ViT-L/14@336px", device=device)
 
     return model, preprocess
 
-def get_weather_classifications_clip(model, preprocess, binary_image, device = 'cpu'):
-    
-    classes=['Clear', 'Overcast', 'Foggy', 'Rainy']
+def get_time_classifications_clip(model, preprocess, binary_image, device = 'cpu'):
+
+    classes=['Daytime', 'Night']
 
     # Load the image and convert it to RGB
     input_image = Image.open(io.BytesIO(binary_image)).convert("RGB")
@@ -28,7 +28,7 @@ def get_weather_classifications_clip(model, preprocess, binary_image, device = '
 
     # Get the predicted class and its probability
     probabilities = torch.nn.functional.softmax(torch.tensor(probs[0]), dim=0)
-    max_prob, weather_idx = torch.max(probabilities, dim=0)
-    weather_class = classes[weather_idx]
+    max_prob, time_idx = torch.max(probabilities, dim=0)
+    time_class = classes[time_idx]
 
-    return input_image, weather_class
+    return input_image, time_class
