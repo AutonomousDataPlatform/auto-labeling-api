@@ -65,7 +65,7 @@ Only return the JSON array, no additional text.""".format(width, height)
     try:
         # Call GPT-4 Vision API
         response = client.chat.completions.create(
-            model="gpt-4o",  # or "gpt-4-vision-preview"
+            model="gpt-4o-mini-2024-07-18",  # or "gpt-4-vision-preview"
             messages=[
                 {
                     "role": "user",

@@ -41,6 +41,7 @@ Install torch and libraries.
     pip install uvicorn[standard]
     pip install fastapi[all]
     pip install -r requirements.txt
+    python -m pip install -e . --no-build-isolation
     python setup.py build develop
     pip uninstall -y shapely
     pip install --no-cache-dir "shapely>=2.0.2"
@@ -84,15 +85,18 @@ Terminal 1
     conda activate bigdata
     cd fastapi
     uvicorn server:app --host 0.0.0.0 --port 8000
+    (Now not use)(when use gpt) PYTHONNOUSERSITE=1 python -m uvicorn server:app --host 0.0.0.0 --port 8000
 
 Terminal 2
 
     conda activate bigdata_clrnet
     cd LaneDetection
     uvicorn server:app --host 0.0.0.0 --port 8001
+    (Now not use)(when use gpt) PYTHONNOUSERSITE=1 python -m uvicorn server:app --host 0.0.0.0 --port 8001
 
 Terminal 3
 
     conda activate bigdata
     cd streamlit
     streamlit run ui.py
+    (Now not use)(when use gpt) PYTHONNOUSERSITE=1 python -m streamlit run ui.py

@@ -2,9 +2,10 @@ import io
 import torch
 from PIL import Image, ImageDraw
 from torchvision import models, transforms
+from torchvision.models.detection import FasterRCNN_ResNet50_FPN_Weights
 
 def get_detector(device = 'cpu'):
-    model = models.detection.fasterrcnn_resnet50_fpn(pretrained=True)
+    model = models.detection.fasterrcnn_resnet50_fpn(weights=FasterRCNN_ResNet50_FPN_Weights.DEFAULT)
     model.eval()
     model = model.to(device)
     return model

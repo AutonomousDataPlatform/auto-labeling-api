@@ -2,16 +2,15 @@ import io
 
 import torch
 from PIL import Image
-from torchvision import transforms
+from torchvision import models, transforms
+from torchvision.models.segmentation import DeepLabV3_ResNet101_Weights
 
 # adapted from https://pytorch.org/hub/pytorch_vision_deeplabv3_resnet101/
 
 
 def get_segmentator(device = 'cpu'):
 
-    model = torch.hub.load(
-        "pytorch/vision:v0.6.0", "deeplabv3_resnet101", pretrained=True
-    )
+    model = models.segmentation.deeplabv3_resnet101(weights=DeepLabV3_ResNet101_Weights.DEFAULT)
     model.eval()
     model = model.to(device)
 
