@@ -25,7 +25,7 @@ def get_weather_classifier(device = 'cpu'):
     model._fc = model._fc.to(device)
 
     # Load the state dict and remove 'module.' prefix if present
-    state_dict = torch.load('./weights/best_model_weather_e10_lr0001_1.pth', map_location=device)
+    state_dict = torch.load('./weights/best_model_weather_e20_lr0001_260505.pth', map_location=device)
     
     # Remove 'module.' prefix from state dict keys
     new_state_dict = {}
