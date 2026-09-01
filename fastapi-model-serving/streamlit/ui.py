@@ -7,10 +7,11 @@ import streamlit as st
 import json
 import base64
 import numpy as np
-from fastapi import UploadFile
 import os
 import glob
 import zipfile
+import threading
+import concurrent.futures as futures
 
 
 def dict_to_numpy(json_str):
@@ -23,12 +24,53 @@ def dict_to_numpy(json_str):
     # NumPy 배열로 변환
     return np.frombuffer(array_bytes, dtype=decoded['dtype']).reshape(decoded['shape'])
 
-segmentation_backend = "http://localhost:8000/segmentation"
+# segmentation_backend = "http://localhost:8000/segmentation"
 detection_yolo_backend = "http://localhost:8000/detection_yolo"
 weather_classification_backend = "http://localhost:8000/weather_classification"
 time_classification_backend = "http://localhost:8000/time_classification"
-image_backend = "http://localhost:8000/image"
+# image_backend = "http://localhost:8000/image"  # 미사용: 이미지 메타데이터는 로컬에서 직접 읽는다
 lane_detection_backend = "http://localhost:8001/lane_detection"
+
+REQUEST_TIMEOUT = 120   # 초. 기존 8000은 사실상 무한 대기라 하나 멈추면 배치가 통째로 정지한다
+
+# 배치 경로는 좌표만 쓰므로 시각화 PNG를 만들지 않도록 include_image=false 로 호출한다
+ANALYSIS_BACKENDS = {
+    "weather":   weather_classification_backend,
+    "time":      time_classification_backend,
+    "detection": detection_yolo_backend + "?include_image=false",
+    "lane":      lane_detection_backend + "?include_image=false",
+}
+
+_local = threading.local()
+
+def _session():
+    # requests.Session은 스레드 간 공유가 보장되지 않으므로 스레드마다 하나씩 둔다
+    if not hasattr(_local, "session"):
+        _local.session = requests.Session()
+    return _local.session
+
+def post_image(server_url, filename, img_bytes):
+    """이미지 바이트를 백엔드에 POST하고 JSON을 반환한다.
+
+    호출마다 새 BytesIO를 만들어 스레드끼리 파일 포인터를 공유하지 않게 한다.
+    """
+    m = MultipartEncoder(fields={"file": (filename, io.BytesIO(img_bytes), "image/jpeg")})
+    r = _session().post(
+        server_url,
+        data=m,
+        headers={"Content-Type": m.content_type},
+        timeout=REQUEST_TIMEOUT,
+    )
+    r.raise_for_status()   # 백엔드 500을 여기서 잡는다 (기존엔 json.loads에서 엉뚱하게 터졌다)
+    return r.json()
+
+def analyze_image(filename, img_bytes):
+    """4개 백엔드를 동시에 호출해 {키: 응답JSON} 으로 반환한다."""
+    with futures.ThreadPoolExecutor(max_workers=len(ANALYSIS_BACKENDS)) as ex:
+        jobs = {key: ex.submit(post_image, url, filename, img_bytes)
+                for key, url in ANALYSIS_BACKENDS.items()}
+        return {key: job.result() for key, job in jobs.items()}
+
 
 def process(image, server_url: str):
     m = MultipartEncoder(fields={"file": ("filename", image, "image/jpeg")})
@@ -46,100 +88,48 @@ def process_image(uploade_file, server_url: str):
     )
     return r
 
-def process_image_to_json(input_image, image_backend, weather_classification_backend, time_classification_backend, detection_yolov10_backend, lane_detection_backend):
-    image_process = process_image(input_image, image_backend)
-    image_result = image_process.content
-    
-    weather_process = process(input_image, weather_classification_backend)
-    weather_result = weather_process.content
-    
-    time_process = process(input_image, time_classification_backend)
-    time_result = time_process.content
-    
-    detection_process = process(input_image, detection_yolov10_backend)
-    detection_result = detection_process.content
-    
-    lane_detection_process = process(input_image, lane_detection_backend)
-    lane_detection_result = lane_detection_process.content
+def build_auto_labeling(filename, img_bytes):
+    """이미지 1장에 대한 Auto_labeling 블록을 만든다.
 
-    if isinstance(weather_result, bytes):
-        weather_result = weather_result.decode("utf-8")
-    else:
-        str(weather_result)
-    if isinstance(time_result, bytes):
-        time_result = time_result.decode("utf-8")
-    else:
-        str(time_result)
-    if isinstance(detection_result, bytes):
-        detection_result = detection_result.decode("utf-8")
-    else:
-        str(detection_result)
-    if isinstance(lane_detection_result, bytes):
-        lane_detection_result = lane_detection_result.decode("utf-8")
-    else:
-        str(lane_detection_result)
+    - 이미지 메타데이터는 로컬에서 직접 읽는다 (/image 왕복 제거)
+    - 나머지 4개 백엔드는 동시에 호출한다 (소요시간이 합계가 아니라 최댓값이 된다)
+    """
+    with Image.open(io.BytesIO(img_bytes)) as im:
+        width, height, image_format, image_mode = im.width, im.height, im.format, im.mode
 
-    image_data = json.loads(image_result)
-    image_info = image_data["image_info"]
-    
-    weather_data = json.loads(weather_result)
-    weather_class = weather_data["weather_class"]
-    
-    time_data = json.loads(time_result)
-    time_class = time_data["time_class"]
-    
-    detection_data = json.loads(detection_result)
-    detection_list = detection_data["detection_result"]
-    
-    lane_detection_data = json.loads(lane_detection_result)
-    lane_detection_list = lane_detection_data["detection_result"]
-    
-    structured_result = {
-        "Original_calib": {},
-        "Original_label": {},
-        "Auto_labeling": {
-            "Image_information": {
-                "file_name": image_info["name"],
-                "width": image_info["width"],
-                "height": image_info["height"],
-                "format": image_info["format"],
-                "mode": image_info["mode"]
-            },
-            "Time_information": {
-                "class": time_class
-            },
-            "Weather_information": {
-                "class": weather_class
-            },
-            "Detection_information": {
-                "num_of_bbox": len(detection_list),
-                "bbox_info": []
-            },
-            "Lane_Detection_information": {
-                "num_of_lanes": len(lane_detection_list),
-                "lane_info": []
-            }
+    res = analyze_image(filename, img_bytes)
+    detection_list = res["detection"]["detection_result"]
+    lane_detection_list = res["lane"]["detection_result"]
+
+    return {
+        "Image_information": {
+            "file_name": filename,
+            "width": width,
+            "height": height,
+            "format": image_format,
+            "mode": image_mode,
+        },
+        "Time_information": {"class": res["time"]["time_class"]},
+        "Weather_information": {"class": res["weather"]["weather_class"]},
+        "Detection_information": {
+            "num_of_bbox": len(detection_list),
+            "bbox_info": [
+                {
+                    "class": box[0],
+                    "type": "Bounding_box",
+                    "bbox_x1": box[1],
+                    "bbox_y1": box[2],
+                    "bbox_x2": box[3],
+                    "bbox_y2": box[4],
+                }
+                for box in detection_list
+            ],
+        },
+        "Lane_Detection_information": {
+            "num_of_lanes": len(lane_detection_list),
+            "lane_info": [{"type": "Line", "points": lane} for lane in lane_detection_list],
         },
     }
-    
-    for box in detection_list:
-        class_label = box[0]
-        x1, y1, x2, y2 = box[1], box[2], box[3], box[4]
-        
-        structured_result["Auto_labeling"]["Detection_information"]["bbox_info"].append({
-        "class": class_label,
-        "type": "Bounding_box",
-        "bbox_x1": x1,
-        "bbox_y1": y1,
-        "bbox_x2": x2,
-        "bbox_y2": y2
-    })
-    for lane in lane_detection_list:
-        structured_result["Auto_labeling"]["Lane_Detection_information"]["lane_info"].append({
-        "type": "Line",
-        "points": lane
-    })
-    return structured_result
 
 def read_text_if_exists(path):
     """경로가 존재하면 텍스트 반환, 없으면 빈 문자열"""
@@ -184,12 +174,12 @@ if st.button("File List") and folder_path:
             
             with open(p, 'rb') as f:
                 img_bytes = f.read()
-            file_like = io.BytesIO(img_bytes)
-            file_like.name = os.path.basename(p)  # Set the name of the file-like
-            structured_result = process_image_to_json(file_like, image_backend, weather_classification_backend, time_classification_backend, detection_yolo_backend, lane_detection_backend)
-            
-            structured_result["Original_calib"] = read_text_if_exists(calib_txt)
-            structured_result["Original_label"] = read_text_if_exists(label_txt)
+
+            structured_result = {
+                "Original_calib": read_text_if_exists(calib_txt),
+                "Original_label": read_text_if_exists(label_txt),
+                "Auto_labeling": build_auto_labeling(os.path.basename(p), img_bytes),
+            }
             
             json_str = json.dumps(structured_result, indent=4)
             json_filename = os.path.splitext(os.path.basename(p))[0] + ".json"
@@ -206,95 +196,8 @@ if st.button("File List") and folder_path:
 input_image = st.file_uploader("Insert image")  # image upload widget
 
 if input_image:
-    image_process = process_image(input_image, image_backend)
-    image_result = image_process.content
-    
-    weather_process = process(input_image, weather_classification_backend)
-    weather_result = weather_process.content
+    structured_result = build_auto_labeling(input_image.name, input_image.getvalue())
 
-    time_process = process(input_image, time_classification_backend)
-    time_result = time_process.content
-
-    detection_process = process(input_image, detection_yolo_backend)
-    detection_result = detection_process.content
-
-    lane_detection_process = process(input_image, lane_detection_backend)
-    lane_detection_result = lane_detection_process.content
-
-    if isinstance(weather_result, bytes):
-        weather_result = weather_result.decode("utf-8")
-    else:
-        str(weather_result)
-    if isinstance(time_result, bytes):
-        time_result = time_result.decode("utf-8")
-    else:
-        str(time_result)
-    if isinstance(detection_result, bytes):
-        detection_result = detection_result.decode("utf-8")
-    else:
-        str(detection_result)
-    if isinstance(lane_detection_result, bytes):
-        lane_detection_result = lane_detection_result.decode("utf-8")
-    else:
-        str(lane_detection_result)
-
-    image_data = json.loads(image_result)
-    image_info = image_data["image_info"]
-    
-    weather_data = json.loads(weather_result)
-    weather_class = weather_data["weather_class"]
-
-    time_data = json.loads(time_result)
-    time_class = time_data["time_class"]
-
-    detection_data = json.loads(detection_result)
-    detection_list = detection_data["detection_result"]
-
-    lane_detection_data = json.loads(lane_detection_result)
-    lane_detection_list = lane_detection_data["detection_result"]
-
-    structured_result = {
-        "Image_information": {
-            "file_name": image_info["name"],
-            "width": image_info["width"],
-            "height": image_info["height"],
-            "format": image_info["format"],
-            "mode": image_info["mode"]
-        },
-        "Time_information": {
-            "class": time_class
-        },
-        "Weather_information": {
-            "class": weather_class
-        },
-        "Detection_information": {
-            "num_of_bbox": len(detection_list),
-            "bbox_info": []
-        },
-        "Lane_Detection_information": {
-            "num_of_lanes": len(lane_detection_list),
-            "lane_info": []
-        }
-    }
-    
-    for box in detection_list:
-        class_label = box[0]
-        x1, y1, x2, y2 = box[1], box[2], box[3], box[4]
-        
-        structured_result["Detection_information"]["bbox_info"].append({
-        "class": class_label,
-        "type": "Bounding_box",
-        "bbox_x1": x1,
-        "bbox_y1": y1,
-        "bbox_x2": x2,
-        "bbox_y2": y2
-    })
-    for lane in lane_detection_list:
-        structured_result["Lane_Detection_information"]["lane_info"].append({
-        "type": "Line",
-        "points": lane
-    })
-        
     # JSON 문자열로 변환합니다.
     json_data = json.dumps(structured_result, indent=4)
     st.download_button(

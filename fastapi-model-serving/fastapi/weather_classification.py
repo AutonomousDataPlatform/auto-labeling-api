@@ -16,7 +16,7 @@ class CustomHead(torch.nn.Module):
     
 def get_weather_classifier(device = 'cpu'):
     # Load the EfficientNet model
-    model = EfficientNet.from_name('efficientnet-b5')
+    model = EfficientNet.from_name('efficientnet-b3')
     # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
     num_ftrs = model._fc.in_features
@@ -25,7 +25,7 @@ def get_weather_classifier(device = 'cpu'):
     model._fc = model._fc.to(device)
 
     # Load the state dict and remove 'module.' prefix if present
-    state_dict = torch.load('./weights/best_model_weather_e20_lr0001_260505.pth', map_location=device)
+    state_dict = torch.load('./weights/best_model_weather_e100_lr00001_b64_260826_bdd100k_b3_class_4.pth', map_location=device)
     
     # Remove 'module.' prefix from state dict keys
     new_state_dict = {}
@@ -42,18 +42,16 @@ def get_weather_classifier(device = 'cpu'):
 
 def get_weather_classifications(model, binary_image, device = 'cpu', threshold=0.5):
     
-    # classes=['daytime', 'dawn/dusk', 'Night']
-    classes=['Clear', 'Overcast', 'Foggy', 'Rainy']
+    classes=['Clear', 'Overcast', 'Rainy', 'Snowy']
 
     # Load the image and convert it to RGB
     input_image = Image.open(io.BytesIO(binary_image)).convert("RGB")
     
     # Define the transform to convert the image to a tensor
-    # EfficientNet-B5 requires 456x456 input and ImageNet normalization
+    # EfficientNet-B3 requires 300x300 input and ImageNet normalization
     # Use deterministic transforms for inference (no random operations)
     transform = transforms.Compose([
-        transforms.Resize(256),
-        transforms.CenterCrop(224),
+        transforms.Resize((300, 300)),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
@@ -73,9 +71,9 @@ def get_weather_classifications(model, binary_image, device = 'cpu', threshold=0
     weather_class = classes[weather_idx]
 
     # Draw the prediction on the image
-    draw = ImageDraw.Draw(input_image)
-    text = f"{weather_class} ({max_prob:.2f})"
-    font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 100)
+    # draw = ImageDraw.Draw(input_image)
+    # text = f"{weather_class} ({max_prob:.2f})"
+    # font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 100)
     # text_size = draw.textsize(text, font=font)
     # text_x = 10
     # text_y = 10

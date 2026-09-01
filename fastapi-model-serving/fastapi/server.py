@@ -1,7 +1,7 @@
 import io
 
-from segmentation import get_segmentator, get_segments
-from detection import get_detector, get_detections
+# from segmentation import get_segmentator, get_segments
+# from detection import get_detector, get_detections
 from image_detection_yolo import get_image_detector_yolo, get_image_detections_yolo
 from weather_classification import get_weather_classifier, get_weather_classifications
 from time_classification import get_time_classifier, get_time_classifications
@@ -12,8 +12,8 @@ from PIL import Image
 import base64
 
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
-seg_model = get_segmentator(device)
-det_model = get_detector(device)
+# seg_model = get_segmentator(device)
+# det_model = get_detector(device)
 
 cls_model_time = get_time_classifier(device)
 cls_model_weather = get_weather_classifier(device)
@@ -27,24 +27,27 @@ app = FastAPI(
     version="0.1.0",
 )
 
-@app.post("/segmentation")
-def get_segmentation_map(file: bytes = File(...)):
-    """Get segmentation maps from image file"""
-    segmented_image = get_segments(seg_model, file)
-    bytes_io = io.BytesIO()
-    segmented_image.save(bytes_io, format="PNG")
-    return Response(bytes_io.getvalue(), media_type="image/png")
+# @app.post("/segmentation")
+# def get_segmentation_map(file: bytes = File(...)):
+#     """Get segmentation maps from image file"""
+#     segmented_image = get_segments(device, seg_model, file)
+#     bytes_io = io.BytesIO()
+#     segmented_image.save(bytes_io, format="PNG")
+#     return Response(bytes_io.getvalue(), media_type="image/png")
 
 @app.post("/detection_yolo")
-def get_detection_map(file: bytes = File(...)):
+def get_detection_map(file: bytes = File(...), include_image: bool = True):
     """Get detection maps from image file"""
     detection_image, detection_result = get_image_detections_yolo(det_model_yolo, file)
     # print("detection_result: ", detection_result)
-    bytes_io = io.BytesIO()
-    detection_image.save(bytes_io, format="PNG")
-    png_bytes = bytes_io.getvalue()
-    img_b64 = base64.b64encode(png_bytes).decode("utf-8")
-    return JSONResponse(content={"detection_result": detection_result, "image": img_b64})
+    payload = {"detection_result": detection_result}
+    if include_image:
+        bytes_io = io.BytesIO()
+        detection_image.save(bytes_io, format="PNG")
+        png_bytes = bytes_io.getvalue()
+        img_b64 = base64.b64encode(png_bytes).decode("utf-8")
+        payload["image"] = img_b64
+    return JSONResponse(content=payload)
 
 @app.post("/weather_classification")
 def get_classification_map(file: bytes = File(...)):

@@ -17,7 +17,7 @@ def get_segmentator(device = 'cpu'):
     return model
 
 
-def get_segments(model, binary_image, max_size=512):
+def get_segments(device, model, binary_image, max_size=512):
 
     input_image = Image.open(io.BytesIO(binary_image)).convert("RGB")
     width, height = input_image.size
@@ -40,6 +40,7 @@ def get_segments(model, binary_image, max_size=512):
     input_batch = input_tensor.unsqueeze(
         0
     )  # create a mini-batch as expected by the model
+    input_batch = input_batch.to(device)
 
     with torch.no_grad():
         output = model(input_batch)["out"][0]

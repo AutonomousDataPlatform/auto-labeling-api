@@ -23,7 +23,11 @@ def get_lane_detector(device):
     load_from = './weights/tusimple_r18.pth'
     cfg = Config.fromfile(cfg_path)
     model = build_net(cfg)
-    model = torch.nn.parallel.DataParallel(model, device_ids = range(1)).cuda()
+    use_cuda = str(device).startswith("cuda")
+    # .module 접근(아래 heads 설정부)이 있으므로 DataParallel 래퍼는 유지한다.
+    # CUDA가 없으면 DataParallel이 조기 반환하며 device_ids를 무시하고 pass-through로 동작한다.
+    model = torch.nn.parallel.DataParallel(model, device_ids=[0] if use_cuda else None)
+    model = model.to(device)
     model = load_network(model, load_from)
     model.eval()
     

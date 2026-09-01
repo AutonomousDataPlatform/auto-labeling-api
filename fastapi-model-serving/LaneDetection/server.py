@@ -43,14 +43,20 @@ def convert_to_serializable(obj):
         return obj
 
 @app.post("/lane_detection")
-def get_lane_detection(file: bytes = File(...)):
+def get_lane_detection(file: bytes = File(...), include_image: bool = True):
     """Get lane detection from image file"""
     lane_image, lane_detection = get_lane_detections(lane_detection_model, file, device)
-    bytes_io = io.BytesIO()
-    lane_image.save(bytes_io, format="PNG")
-    image_bytes = bytes_io.getvalue()
-    image_b64 = base64.b64encode(image_bytes).decode("utf-8")
-    
+
+    # payload에 담기 전에 변환해야 한다. 나중에 변환하면 lane_detection 이름만
+    # 새 객체로 재바인딩될 뿐 payload 안에는 ndarray가 그대로 남아 직렬화가 실패한다.
     lane_detection = convert_to_serializable(lane_detection)
 
-    return JSONResponse(content={"detection_result": lane_detection, "image": image_b64})
+    payload = {"detection_result": lane_detection}
+    if include_image:
+        bytes_io = io.BytesIO()
+        lane_image.save(bytes_io, format="PNG")
+        image_bytes = bytes_io.getvalue()
+        image_b64 = base64.b64encode(image_bytes).decode("utf-8")
+        payload["image"] = image_b64
+
+    return JSONResponse(content=payload)

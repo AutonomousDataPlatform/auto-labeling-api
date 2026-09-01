@@ -39,7 +39,8 @@ def load_network(net, model_dir, finetune_from=None, logger=None):
             logger.info('Finetune model from: ' + finetune_from)
         load_network_specified(net, finetune_from, logger)
         return
-    pretrained_model = torch.load(model_dir)
+    map_location = None if torch.cuda.is_available() else 'cpu'
+    pretrained_model = torch.load(model_dir, map_location=map_location)
     net.load_state_dict(pretrained_model['net'], strict=False)
     return net
 
@@ -51,7 +52,8 @@ def resume_network(model_dir, net, optim, scheduler, recorder):
 
     print('resume model: {}'.format(model_dir))
 
-    pretrained_model = torch.load(model_dir)
+    map_location = None if torch.cuda.is_available() else 'cpu'
+    pretrained_model = torch.load(model_dir, map_location=map_location)
     net.load_state_dict(pretrained_model['net'])
     optim.load_state_dict(pretrained_model['optim'])
     scheduler.load_state_dict(pretrained_model['scheduler'])
