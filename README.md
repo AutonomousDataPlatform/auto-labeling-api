@@ -51,7 +51,7 @@ Install torch and libraries.
 
 Download weights file from the link below
 
-    https://drive.google.com/file/d/1Ey6WLbdzGrsOzyuvhFaFV653Tjxe1Tn6/view?usp=sharing
+    https://drive.google.com/file/d/1widOAriflJRsE0J1byFgEyJlUwtfzLRt/view?usp=drive_link
 
 Extract file
 
