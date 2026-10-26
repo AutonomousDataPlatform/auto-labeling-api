@@ -38,7 +38,7 @@ app = FastAPI(
 @app.post("/detection_yolo")
 def get_detection_map(file: bytes = File(...), include_image: bool = True):
     """Get detection maps from image file"""
-    detection_image, detection_result = get_image_detections_yolo(det_model_yolo, file)
+    detection_image, detection_result = get_image_detections_yolo(det_model_yolo, file, draw=include_image)
     # print("detection_result: ", detection_result)
     payload = {"detection_result": detection_result}
     if include_image:
