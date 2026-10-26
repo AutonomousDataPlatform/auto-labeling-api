@@ -51,7 +51,7 @@ Install torch and libraries.
 
 Download weights file from the link below
 
-    https://drive.google.com/file/d/1widOAriflJRsE0J1byFgEyJlUwtfzLRt/view?usp=drive_link
+    https://drive.google.com/file/d/1LqoJkPCQoggO3nmSdK6_e-VkEUgiF1rh/view?usp=drive_link
 
 Extract file
 
@@ -61,21 +61,21 @@ You will find the following two folders after extraction
     
     fastapi
       └─ weights
-      └─ yolo11x_finetuned_kitti.pt
+      └─ yolo11x_finetuned_kitti_nusc_1280_vis40_ep20.pt
     LaneDetection
       └─ weights
 Then, move folders (name: weights) below to the specified directions
 
-    fastapi                         -->    auto-labeling-api
-      └─ weights                            ├─ fastapi-model-serving
-      └─ yolo11x_finetuned_kitti.pt             ├─ fastapi
-                                                    ├─ weights
-                                                    └─ yolo11x_finetuned_kitti.pt
+    fastapi                                                 -->    auto-labeling-api
+      └─ weights                                                    ├─ fastapi-model-serving
+      └─ yolo11x_finetuned_kitti_nusc_1280_vis40_ep20.pt                ├─ fastapi
+                                                                            ├─ weights
+                                                                            └─ yolo11x_finetuned_kitti_nusc_1280_vis40_ep20.pt
     
-    LaneDetection                   -->    auto-labeling-api
-      └─ weights                            ├─ fastapi-model-serving
-                                                ├─ LaneDetection
-                                                    ├─ weights
+    LaneDetection                                           -->    auto-labeling-api
+      └─ weights                                                    ├─ fastapi-model-serving
+                                                                        ├─ LaneDetection
+                                                                            ├─ weights
 
 
 ## 2. Run
