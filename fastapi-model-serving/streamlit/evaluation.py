@@ -304,18 +304,19 @@ def evaluate_detection(per_image, iou_thr=0.5):
     }
 
 
-def match_image_detections(pred, gt, iou_thr=0.5):
+def match_image_detections(pred, gt, iou_thr=0.5, with_pairs=False):
     """이미지 한 장 안에서 예측과 GT를 매칭한다. evaluate_detection과 시각화가 같이 쓰는 유일한 매칭 규칙.
 
     클래스마다 점수가 높은 예측부터, IoU가 임계값 이상이면서 아직 안 쓴 GT 중 IoU가 가장 큰 것과 짝짓는다.
     GT와 못 맞춘 예측이 무시 영역(DontCare, 미매핑 클래스)에 절반 이상 들어가 있으면 IGN으로 두고 집계하지 않는다.
 
-    반환: (pred_status, gt_status)
+    반환: (pred_status, gt_status), with_pairs면 (pred_status, gt_status, [(예측 i, GT j, IoU)])
       pred_status[i] in {"TP", "FP", "IGN"}  IGN = 무시 영역 안의 미매칭 검출
       gt_status[j]   in {"TP", "FN", "IGN"}  IGN = 무시 영역(DontCare, 미매핑 클래스)
     """
     pred_status = ["FP"] * len(pred)
     gt_status = ["IGN" if o.get("ignore") else "FN" for o in gt]
+    pairs = []
     ign_boxes = np.array([o["bbox"] for o in gt if o.get("ignore")], dtype=float).reshape(-1, 4)
 
     classes = {o["cls"] for o in pred} | {o["cls"] for o in gt if not o.get("ignore")}
@@ -334,10 +335,11 @@ def match_image_detections(pred, gt, iou_thr=0.5):
                     used[best] = True
                     pred_status[i] = "TP"
                     gt_status[gt_idx[best]] = "TP"
+                    pairs.append((i, gt_idx[best], float(ious[best])))
                     continue
             if len(ign_boxes) and _ioa_one_to_many(box, ign_boxes).max() >= 0.5:
                 pred_status[i] = "IGN"
-    return pred_status, gt_status
+    return (pred_status, gt_status, pairs) if with_pairs else (pred_status, gt_status)
 
 
 # --------------------------------------------------------------------------
@@ -539,6 +541,68 @@ def evaluate_lanes(per_image):
         "pixel_threshold": LANE_PIXEL_THRESH,
         "match_threshold": LANE_PT_THRESH,
     }
+
+
+# --------------------------------------------------------------------------
+# 건별 비교 로그 (검산용)
+# --------------------------------------------------------------------------
+# 평가 함수와 같은 매칭 결과를 GT·생성 라벨 한 건당 한 줄로 적는다. 리포트의 정확도는 이 로그만으로
+# 다시 계산할 수 있다(tools/verify_eval_log.py). 판정 값: TP 정답, FP 오답(생성 라벨), FN 놓친 GT,
+# IGN 무시 영역(집계 제외), 빈칸은 GT가 없어 판정에서 제외.
+
+def _r(v, nd=1):
+    return round(float(v), nd)
+
+
+def detection_log(per_image, iou_thr=0.5):
+    """생성 박스·GT 박스 한 개당 한 줄. 정확도 = 생성 박스 중 TP 수 / (TP + FP) 수."""
+    rows = []
+    for stem in sorted(per_image):
+        d = per_image[stem]
+        p_st, g_st, pairs = match_image_detections(d["pred"], d["gt"], iou_thr, with_pairs=True)
+        p2g = {i: (j, iou) for i, j, iou in pairs}
+        g2p = {j: (i, iou) for i, j, iou in pairs}
+        for kind, objs, status, link in (("생성", d["pred"], p_st, p2g), ("GT", d["gt"], g_st, g2p)):
+            for k, (o, s) in enumerate(zip(objs, status)):
+                other, iou = link.get(k, ("", ""))
+                x1, y1, x2, y2 = o["bbox"]
+                score = o.get("score") if kind == "생성" else None
+                rows.append({"image": stem, "kind": kind, "id": k, "class": o["cls"],
+                             "x1": _r(x1), "y1": _r(y1), "x2": _r(x2), "y2": _r(y2),
+                             "score": "" if score is None else _r(score, 4), "result": s,
+                             "matched_id": other, "iou": "" if iou == "" else _r(iou, 4)})
+    return rows
+
+
+def classification_log(pred_by_stem, gt_by_stem):
+    """이미지 한 장당 한 줄. 판정 1 정답, 0 오답, 빈칸 판정 제외(GT 또는 생성 라벨 없음). 정확도 = 1의 수 / 판정 수."""
+    rows = []
+    for stem in sorted(pred_by_stem):
+        p, g = pred_by_stem[stem], gt_by_stem.get(stem)
+        rows.append({"image": stem, "gt": g or "", "generated": p or "",
+                     "result": "" if (g is None or p is None) else int(g == p)})
+    return rows
+
+
+def lane_log(per_image):
+    """생성 차선·GT 차선 한 개당 한 줄. evaluate_lanes와 같은 매칭이고, 정확도 = 생성 차선 중 TP 수 / 생성 차선 수."""
+    rows = []
+    for stem in sorted(per_image):
+        d = per_image[stem]
+        h, gt_lanes = d["gt"]["h_samples"], d["gt"]["lanes"]
+        pred_lanes = [_pred_lane_xs(lane, h) for lane in d["pred"]]
+        matches, p_pts, g_pts = match_generated_lanes(pred_lanes, gt_lanes, h)
+        p2g = {i: (j, hit) for i, j, hit in matches}
+        g2p = {j: (i, hit) for i, j, hit in matches}
+        for i in range(len(pred_lanes)):
+            j, hit = p2g.get(i, ("", ""))
+            rows.append({"image": stem, "kind": "생성", "id": i, "points": int(p_pts[i]), "matched_id": j,
+                         "hit_points": hit, "result": "TP" if j != "" else "FP"})
+        for j in range(len(gt_lanes)):
+            i, hit = g2p.get(j, ("", ""))
+            rows.append({"image": stem, "kind": "GT", "id": j, "points": int(g_pts[j]), "matched_id": i,
+                         "hit_points": hit, "result": "TP" if i != "" else "FN"})
+    return rows
 
 
 # --------------------------------------------------------------------------

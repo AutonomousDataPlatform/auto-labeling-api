@@ -8,13 +8,13 @@ SERVING="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"     # fastapi-model-s
 REPO="$(dirname "$SERVING")"
 EVAL_DIR="${1:-${EVAL_DIR:-/mnt/d/02_Dataset/04_Bigdata/Eval}}"
 
-# 모델 가중치: 이름|fastapi-model-serving 기준 경로|MD5
-# 가중치 파일이나 경로를 바꾸면 서버 코드, 이 목록, 시험절차서의 MD5를 같이 고친다
+# 모델 가중치: 이름|fastapi-model-serving 기준 경로|SHA-256
+# 가중치 파일이나 경로를 바꾸면 서버 코드, 이 목록, 시험절차서의 SHA-256을 같이 고친다
 MODELS=(
-  "객체|fastapi/yolo11x_finetuned_kitti_nusc_1280_vis40_ep20.pt|14a1f21444bf037fb64d66162d17b949"
-  "날씨|fastapi/weights/best_model_weather_e100_lr00001_b64_260826_bdd100k_b3_class_4.pth|f467e8cb354f72e2cea26f215c53fafd"
-  "시간|fastapi/weights/best_model_time_e20_lr0001_b64_260831_2_b3_class_2.pth|59155276b970e470e0eec42771798b3e"
-  "차선|LaneDetection/weights/tusimple_r18.pth|96ab8023120423bf591b945980e8d719"
+  "객체|fastapi/yolo11x_finetuned_kitti_nusc_1280_vis40_ep20.pt|4c0a3bf163da068ae1665c53ce793dca9da36c1b6033b191ebdc27a5d7b73d98"
+  "날씨|fastapi/weights/best_model_weather_e100_lr00001_b64_260826_bdd100k_b3_class_4.pth|2ed8f817658414f701caf892233e7136f9d314903ca3e04875dbe6e1e17f061d"
+  "시간|fastapi/weights/best_model_time_e20_lr0001_b64_260831_2_b3_class_2.pth|e59f84882f0c4cd768c6d66769d143cd49daace38e148e651c38b6c299d02d14"
+  "차선|LaneDetection/weights/tusimple_r18.pth|f175ab318d6711e4a219d8d8239684f0b960b14bc3b224e16b696ff31a4c0f31"
 )
 CONDA_ENVS=(bigdata bigdata_clrnet)
 PORTS=(8000 8001 8501)
@@ -69,7 +69,7 @@ for p in "${PORTS[@]}"; do
 done
 
 # ---------------------------------------------------------------------------
-echo; echo "2. 모델 무결성 (MD5)"
+echo; echo "2. 모델 무결성 (SHA-256)"
 for m in "${MODELS[@]}"; do
   IFS='|' read -r name path want <<< "$m"
   if [ ! -f "$SERVING/$path" ]; then fail "$name 가중치 없음: $path"; continue; fi
@@ -78,8 +78,8 @@ for m in "${MODELS[@]}"; do
     fail "$name 서버 코드가 $(basename "$path")를 쓰지 않음 (가중치 경로가 바뀌었다면 이 스크립트의 MODELS도 고칠 것)"
     continue
   fi
-  got="$(md5sum "$SERVING/$path" | cut -d' ' -f1)"
-  if [ "$got" = "$want" ]; then ok "$name $got  $path"; else fail "$name MD5 불일치: $got (기대값 $want)  $path"; fi
+  got="$(sha256sum "$SERVING/$path" | cut -d' ' -f1)"
+  if [ "$got" = "$want" ]; then ok "$name $got  $path"; else fail "$name SHA-256 불일치: $got (기대값 $want)  $path"; fi
 done
 
 # ---------------------------------------------------------------------------

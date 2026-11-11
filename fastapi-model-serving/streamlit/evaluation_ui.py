@@ -6,6 +6,7 @@ ui.py 와의 순환 import를 피하기 위해 자동 라벨링 함수는 인자
 절차는 1) 평가 데이터셋 선택 -> 2) 자동 라벨링 -> 3) GT 확인 -> 4) 정확도 측정 -> 5) 결과 시각화 순이다.
 """
 
+import csv
 import datetime
 import json
 import os
@@ -26,17 +27,18 @@ IOU_THRESHOLD = 0.5
 K_PRED = "eval_predictions"      # {stem: {"detection": [...], "weather":..., "time":..., "lanes":[...]}}
 K_ERRORS = "eval_errors"
 K_REPORT = "eval_report"
+K_LOG_DIR = "eval_log_dir"       # 마지막 정확도 측정의 건별 비교 로그 폴더
 K_PREVIEW = "eval_preview"       # 미리보기로 그린 이미지. '다른 이미지 보기'를 누를 때만 다시 그린다
 K_ZIP = "eval_vis_zips"          # {"random": {...}, "all": {...}} 마지막으로 저장한 zip 정보
-RESULT_KEYS = (K_PRED, K_ERRORS, K_REPORT, K_PREVIEW, K_ZIP)
+RESULT_KEYS = (K_PRED, K_ERRORS, K_REPORT, K_LOG_DIR, K_PREVIEW, K_ZIP)
 
 PREVIEW_COUNT = 5
 RANDOM_ZIP_COUNT = 100
 DOWNLOAD_LIMIT = 200 * 1024 * 1024   # 이보다 큰 zip은 메모리를 아끼려고 다운로드 버튼 없이 파일로만 둔다
 
 # 인증 기준(생성 데이터셋 정확도 85% 이상)을 판정하는 지표. 항목마다 맨 앞 지표에 붙인다
-PRECISION_HELP = ("정밀도(Precision) = 정답인 생성 라벨 / 판정한 생성 라벨. "
-                  "생성 데이터셋 정확도의 인증 기준(85% 이상)을 판정하는 값입니다.")
+ACCURACY_HELP = ("정확도(Accuracy) = 정답으로 판정된 생성 라벨 수 / 판정한 생성 라벨 수 × 100. "
+                 "생성 데이터셋 정확도의 인증 기준(85% 이상)을 판정하는 값입니다.")
 
 
 # --------------------------------------------------------------------------
@@ -217,7 +219,7 @@ def _step_autolabel(items, build_auto_labeling):
         progress.empty()
         st.session_state[K_PRED] = predictions
         st.session_state[K_ERRORS] = errors
-        _clear((K_REPORT, K_PREVIEW, K_ZIP))            # 예측이 바뀌면 이전 평가·시각화 결과는 무효
+        _clear((K_REPORT, K_LOG_DIR, K_PREVIEW, K_ZIP))            # 예측이 바뀌면 이전 평가·시각화 결과는 무효
 
     preds = st.session_state.get(K_PRED)
     if preds:
@@ -259,11 +261,11 @@ def _render_detection(report):
     t = report["totals"]
     judged = t["TP"] + t["FP"]
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("정밀도", _pct(report["micro_precision"]), help=PRECISION_HELP)
+    c1.metric("정확도", _pct(report["micro_precision"]), help=ACCURACY_HELP)
     c2.metric("재현율", _pct(report["micro_recall"]))
     c3.metric("F1", _pct(report["micro_f1"]))
     c4.metric("판정한 생성 라벨", f"{judged:,}")
-    st.caption(f"클래스 평균(GT가 있는 클래스): 정밀도 {_pct(report['macro_precision'])}, "
+    st.caption(f"클래스 평균(GT가 있는 클래스): 정확도 {_pct(report['macro_precision'])}, "
                f"재현율 {_pct(report['macro_recall'])}, F1 {_pct(report['macro_f1'])}")
 
     rows = []
@@ -273,7 +275,7 @@ def _render_detection(report):
             "class": cls,
             "생성 라벨": made,
             "정답": m["TP"],
-            "정밀도": _ratio(m["precision"], made),
+            "정확도": _ratio(m["precision"], made),
             "GT": m["n_gt"],
             "재현율": _ratio(m["recall"], m["n_gt"]),
             "F1": _ratio(m["f1"], made and m["n_gt"]),
@@ -281,7 +283,7 @@ def _render_detection(report):
         })
     st.dataframe(rows, use_container_width=True)
     st.caption(f"정답 기준: 클래스 일치(KITTI 클래스로 매핑) + IoU {report['iou_threshold']:.2f} 이상, GT 1개당 생성 라벨 1개만 매칭. "
-               f"정밀도 = 정답 {t['TP']:,} / 판정한 생성 라벨 {judged:,}. "
+               f"정확도 = 정답 {t['TP']:,} / 판정한 생성 라벨 {judged:,}. "
                f"무시 영역(DontCare, 평가 제외 객체) 안의 미매칭 생성 라벨 {t['n_pred'] - judged:,}개는 판정에서 뺐습니다. "
                f"이미지 {report['n_images']:,}장, GT {t['n_gt']:,}개.")
 
@@ -292,7 +294,7 @@ def _render_classification(title, report):
         st.warning(f"{title}: GT와 생성 라벨이 모두 있는 이미지가 없습니다.")
         return
     c1, c2, c3 = st.columns(3)
-    c1.metric("정밀도", _pct(report["accuracy"]), help=PRECISION_HELP)
+    c1.metric("정확도", _pct(report["accuracy"]), help=ACCURACY_HELP)
     c2.metric("판정한 생성 라벨", f"{report['n']:,}")
     c3.metric("판정 제외", f"{report['n_excluded']:,}")
 
@@ -300,11 +302,11 @@ def _render_classification(title, report):
     for lab, m in report["per_class"].items():
         made = m["TP"] + m["FP"]
         rows.append({"class": lab, "생성 라벨": made, "정답": m["TP"],
-                     "정밀도": _ratio(m["precision"], made),
+                     "정확도": _ratio(m["precision"], made),
                      "GT": m["support"], "재현율": _ratio(m["recall"], m["support"])})
     st.dataframe(rows, use_container_width=True)
-    st.caption("이미지마다 라벨을 1개씩 생성하므로 정밀도 = GT와 같은 생성 라벨 / 판정한 생성 라벨입니다. "
-               "클래스별 정밀도는 그 클래스로 생성한 라벨 중 맞은 비율입니다. "
+    st.caption("이미지마다 라벨을 1개씩 생성하므로 정확도 = GT와 같은 생성 라벨 / 판정한 생성 라벨입니다. "
+               "클래스별 정확도는 그 클래스로 생성한 라벨 중 맞은 비율입니다. "
                "판정 제외: GT가 없거나 GT 값이 모델 클래스에 없는 이미지(BDD100K의 foggy·undefined, dawn/dusk 등).")
 
     st.caption("혼동행렬 (행 = GT, 열 = 생성 라벨)")
@@ -317,16 +319,16 @@ def _render_classification(title, report):
 def _render_lanes(report):
     """생성 차선 기준: 생성된 차선 중 GT 차선과 맞는 비율."""
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("정밀도", _pct(report["precision"]), help=PRECISION_HELP)
+    c1.metric("정확도", _pct(report["precision"]), help=ACCURACY_HELP)
     c2.metric("재현율", _pct(report["recall"]))
     c3.metric("F1", _pct(report["f1"]))
-    c4.metric("생성 점 정밀도", _pct(report["point_precision"]))
+    c4.metric("생성 점 정확도", _pct(report["point_precision"]))
     st.caption(f"생성 차선 {report['n_pred_lanes']:,}개 중 정답 {report['n_correct_lanes']:,}개, GT 차선 {report['n_gt_lanes']:,}개, "
                f"이미지 {report['n_images']:,}장. 정답 차선: 생성 차선의 점 중 {report['match_threshold']:.0%} 이상이 같은 y의 GT 차선과 "
                f"{report['pixel_threshold']}px / cos θ 미만으로 떨어진 경우(TuSimple 점 판정 기준), GT 차선 1개당 생성 차선 1개만 인정. "
                "평가는 GT의 h_samples 범위에서 하며, GT 차선이 없는 이미지의 생성 차선은 모두 틀린 차선으로 셉니다.")
     t = report["tusimple"]
-    with st.expander("참고: TuSimple 공식 지표 (LaneEval)"):
+    with st.expander("참고: TuSimple 공식 지표 (LaneEval, 위 정확도와 다른 GT 기준 지표)"):
         if t["n_images"]:
             d1, d2, d3 = st.columns(3)
             d1.metric("Accuracy", _pct(t["accuracy"]))
@@ -357,32 +359,102 @@ def _evaluate_lanes(preds, gt):
         {s: {"pred": preds[s]["lanes"], "gt": gt["lanes"][s]} for s in preds if s in gt["lanes"]})
 
 
+# 건별 비교 로그: 위 계산 함수와 같은 입력으로 만든다
+def _log_detection(preds, gt):
+    return E.detection_log(
+        {s: {"pred": preds[s]["detection"], "gt": gt["detection"][s]} for s in preds if s in gt["detection"]},
+        iou_thr=IOU_THRESHOLD)
+
+
+def _log_classification(key):
+    return lambda preds, gt: E.classification_log({s: preds[s][key] for s in preds}, gt[key])
+
+
+def _log_lanes(preds, gt):
+    return E.lane_log({s: {"pred": preds[s]["lanes"], "gt": gt["lanes"][s]} for s in preds if s in gt["lanes"]})
+
+
 # 평가 항목: 리포트 키, 결과 제목, 계산·표시 함수, 시각화 범례
 _CLS_LEGEND = "이미지 위쪽에 생성 라벨과 GT를 표시합니다. [O] 정답, [X] 오답, [-] GT 없음(판정 제외)"
 TASKS = {
     "Detection": {"key": "detection", "title": "객체 인지", "evaluate": _evaluate_detection,
-                  "render": _render_detection,
+                  "render": _render_detection, "log": _log_detection, "accuracy": "micro_precision",
                   "legend": f"🟦 TP(맞춘 검출)  🟥 FP(오검출)  🟨 FN(놓친 GT)  🟩 GT  ⬜ 회색: 무시 영역  — IoU {IOU_THRESHOLD:.2f} 기준"},
     "Weather": {"key": "weather", "title": "날씨 분류", "evaluate": _evaluate_classification("weather", E.WEATHER_CLASSES),
-                "render": lambda r: _render_classification("Weather", r), "legend": _CLS_LEGEND},
+                "render": lambda r: _render_classification("Weather", r), "legend": _CLS_LEGEND,
+                "log": _log_classification("weather"), "accuracy": "accuracy"},
     "Time": {"key": "time", "title": "시간 분류", "evaluate": _evaluate_classification("time", E.TIME_CLASSES),
-             "render": lambda r: _render_classification("Time", r), "legend": _CLS_LEGEND},
+             "render": lambda r: _render_classification("Time", r), "legend": _CLS_LEGEND,
+             "log": _log_classification("time"), "accuracy": "accuracy"},
     "Lane": {"key": "lanes", "title": "차선 인지", "evaluate": _evaluate_lanes, "render": _render_lanes,
-             "legend": "청록: 생성 차선, 자홍: GT 차선"},
+             "legend": "청록: 생성 차선, 자홍: GT 차선", "log": _log_lanes, "accuracy": "precision"},
 }
+ACCURACY_DEFINITION = "정확도(accuracy) = 정답으로 판정된 생성 라벨 수 / 판정한 생성 라벨 수"
 
 
 def _report_for_download(report):
-    """평가 리포트에서 생성 라벨 평가에 쓰지 않는 AP·mAP를 뺀다."""
+    """평가 리포트에서 생성 라벨 평가에 쓰지 않는 AP·mAP를 빼고, 항목마다 판정 지표를 accuracy로 함께 적는다."""
     out = dict(report)
     if "detection" in out:
         det = {k: v for k, v in out["detection"].items() if k != "mAP"}
         det["per_class"] = {c: {k: v for k, v in m.items() if k != "AP"} for c, m in det["per_class"].items()}
         out["detection"] = det
+    for spec in TASKS.values():
+        if spec["key"] in out:
+            out[spec["key"]] = {"accuracy": out[spec["key"]][spec["accuracy"]], **out[spec["key"]]}
+    out["accuracy_definition"] = ACCURACY_DEFINITION
     return out
 
 
-def _step_evaluate(dataset, preds, gt):
+LOG_README = """자동 라벨링 정확도 측정 로그
+==========================
+report.json        정확도 측정 결과 (웹 UI [정확도 측정] 화면과 같은 값, 항목별 accuracy)
+predictions.json   자동 라벨링 결과 (이미지별 생성 라벨: 검출 박스·신뢰도, 날씨, 시간, 차선 점열)
+*_log.csv          GT와 생성 라벨의 건별 비교. 정확도는 이 파일만으로 다시 계산할 수 있다.
+
+detection_log.csv  생성 박스와 GT 박스 한 개당 한 줄
+  kind 생성/GT, id 이미지 안 번호, class, x1 y1 x2 y2 (픽셀), score 검출 신뢰도
+  result  생성: TP 정답(클래스 일치·IoU 0.5 이상·GT 1:1), FP 오답, IGN 무시 영역(집계 제외)
+          GT:   TP 맞춘 GT, FN 놓친 GT, IGN 무시 영역
+  matched_id 짝지어진 상대 박스 id, iou 그 IoU
+  정확도 = (kind=생성, result=TP 줄 수) / (kind=생성, result=TP 또는 FP 줄 수)
+weather_log.csv / time_log.csv  이미지 한 장당 한 줄
+  gt, generated, result 1 정답 0 오답 빈칸 판정 제외(GT 없음)
+  정확도 = (result=1 줄 수) / (result가 0 또는 1인 줄 수)
+lanes_log.csv      생성 차선과 GT 차선 한 개당 한 줄
+  points 차선 점 수, matched_id 짝지어진 상대 차선, hit_points 맞은 점 수
+  result 생성: TP 정답 차선(점의 85% 이상이 20px/cos θ 이내, GT 1:1), FP 오답 / GT: TP, FN
+  정확도 = (kind=생성, result=TP 줄 수) / (kind=생성 줄 수)
+
+검산: python fastapi-model-serving/tools/verify_eval_log.py <이 폴더>
+"""
+
+
+def _write_csv(path, rows):
+    with open(path, "w", newline="", encoding="utf-8-sig") as f:      # Excel에서 한글이 깨지지 않게 BOM을 붙인다
+        writer = csv.DictWriter(f, fieldnames=list(rows[0]) if rows else ["image"])
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def _save_eval_log(dataset, root, preds, gt, report):
+    """측정 결과를 검산할 수 있도록 리포트·자동 라벨링 결과·건별 비교 로그를 한 폴더에 저장하고 경로를 돌려준다."""
+    stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    out = os.path.join(os.path.dirname(os.path.normpath(root)), "Eval_log", f"{dataset}_{stamp}")
+    os.makedirs(out, exist_ok=True)
+    meta = {"dataset": dataset, "eval_dir": root, "created": stamp, "n_images": len(preds)}
+    with open(os.path.join(out, "report.json"), "w", encoding="utf-8") as f:
+        json.dump({**meta, **_report_for_download(report)}, f, indent=2, ensure_ascii=False)
+    with open(os.path.join(out, "predictions.json"), "w", encoding="utf-8") as f:
+        json.dump({s: preds[s] for s in sorted(preds)}, f, ensure_ascii=False)
+    for t in DATASETS[dataset]["tasks"]:
+        _write_csv(os.path.join(out, f"{TASKS[t]['key']}_log.csv"), TASKS[t]["log"](preds, gt))
+    with open(os.path.join(out, "README.txt"), "w", encoding="utf-8") as f:
+        f.write(LOG_README)
+    return out
+
+
+def _step_evaluate(dataset, root, preds, gt):
     st.subheader("4. 정확도 측정")
     if not preds:
         st.caption("2단계 자동 라벨링을 먼저 실행하세요.")
@@ -395,9 +467,13 @@ def _step_evaluate(dataset, preds, gt):
         for t in tasks:
             report[TASKS[t]["key"]] = TASKS[t]["evaluate"](preds, gt)
         st.session_state[K_REPORT] = report
+        st.session_state[K_LOG_DIR] = _save_eval_log(dataset, root, preds, gt, report)
     report = st.session_state.get(K_REPORT)
     if not report:
         return
+    if st.session_state.get(K_LOG_DIR):
+        st.success(f"건별 비교 로그 저장: `{_windows_path(st.session_state[K_LOG_DIR])}` "
+                   "(report.json, predictions.json, *_log.csv, README.txt)")
 
     st.divider()
     for t in tasks:
@@ -525,7 +601,7 @@ def _step_visualize(dataset, root, items, preds, gt):
 # --------------------------------------------------------------------------
 
 def render_evaluation_tab(build_auto_labeling):
-    st.write("자동 라벨링으로 생성한 라벨 중 GT와 일치하는 비율(정밀도)을 인증 평가셋으로 측정합니다. "
+    st.write("자동 라벨링으로 생성한 라벨 중 GT와 일치하는 비율(정확도)을 인증 평가셋으로 측정합니다. "
              "평가 데이터셋 선택 → 자동 라벨링 → GT 확인 → 측정 → 시각화 순서로 진행하세요.")
     try:
         dataset, root, items = _step_dataset()
@@ -535,7 +611,7 @@ def render_evaluation_tab(build_auto_labeling):
         preds = st.session_state.get(K_PRED) or {}
         gt = _step_gt(dataset, root, sorted(preds))
         st.divider()
-        _step_evaluate(dataset, preds, gt)
+        _step_evaluate(dataset, root, preds, gt)
         st.divider()
         _step_visualize(dataset, root, items, preds, gt)
     except Exception:

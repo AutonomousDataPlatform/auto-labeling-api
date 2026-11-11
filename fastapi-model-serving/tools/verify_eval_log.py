@@ -1,0 +1,53 @@
+# 사용법: python verify_eval_log.py <로그 폴더>   (웹 UI [정확도 측정] 때 저장된 Eval_log/<데이터셋>_<시각>)
+"""건별 비교 로그(*_log.csv)만으로 정확도를 다시 계산해 report.json의 값과 대조한다.
+
+정확도 = 정답으로 판정된 생성 라벨 수 / 판정한 생성 라벨 수
+  detection_log.csv  kind=생성 줄 중 result=TP / (TP + FP)        (IGN은 무시 영역이라 판정에서 제외)
+  weather_log.csv    result=1 / (result가 0 또는 1)               (빈칸은 GT가 없어 판정에서 제외)
+  time_log.csv       위와 같음
+  lanes_log.csv      kind=생성 줄 중 result=TP / kind=생성 줄 수
+모든 항목이 일치하면 종료 코드 0, 하나라도 다르면 1.
+"""
+import csv, json, os, sys
+
+LOG_DIR = sys.argv[1]
+report = json.load(open(os.path.join(LOG_DIR, "report.json"), encoding="utf-8"))
+
+
+def rows(name):
+    path = os.path.join(LOG_DIR, name)
+    if not os.path.exists(path):
+        return None
+    with open(path, newline="", encoding="utf-8-sig") as f:
+        return list(csv.DictReader(f))
+
+
+def generated_tp(log, judged_results):
+    gen = [r for r in log if r["kind"] == "생성"]
+    tp = sum(r["result"] == "TP" for r in gen)
+    return tp, sum(r["result"] in judged_results for r in gen)
+
+
+checks = []
+for key, name, count in (("detection", "detection_log.csv", lambda log: generated_tp(log, ("TP", "FP"))),
+                         ("weather", "weather_log.csv", lambda log: (sum(r["result"] == "1" for r in log),
+                                                                    sum(r["result"] in ("0", "1") for r in log))),
+                         ("time", "time_log.csv", lambda log: (sum(r["result"] == "1" for r in log),
+                                                              sum(r["result"] in ("0", "1") for r in log))),
+                         ("lanes", "lanes_log.csv", lambda log: generated_tp(log, ("TP", "FP")))):
+    log = rows(name)
+    if log is None or key not in report:
+        continue
+    correct, judged = count(log)
+    recomputed = correct / judged if judged else 0.0
+    checks.append((key, correct, judged, recomputed, report[key]["accuracy"]))
+
+print(f"로그 폴더: {LOG_DIR}  (데이터셋 {report.get('dataset')}, 이미지 {report.get('n_images')}장, 측정 {report.get('created')})")
+print(f"{'항목':10s} {'정답':>8s} {'판정':>8s} {'로그로 계산한 정확도':>18s} {'리포트 정확도':>12s}  일치")
+ok = True
+for key, correct, judged, recomputed, reported in checks:
+    same = abs(recomputed - reported) < 1e-12
+    ok &= same
+    print(f"{key:10s} {correct:8,d} {judged:8,d} {recomputed * 100:17.4f}% {reported * 100:11.4f}%  {'O' if same else 'X'}")
+print("결과: 모두 일치" if ok and checks else "결과: 불일치 또는 확인할 로그 없음")
+sys.exit(0 if ok and checks else 1)
