@@ -62,7 +62,7 @@ ev = hash_list("eval", args.eval)
 ev_by_hash = {}
 for p, h in ev.items():
     ev_by_hash.setdefault(h, []).append(p)
-lines = ["학습·검증 데이터와 평가 데이터 해시 비교 (SHA-256)", "=" * 40,
+lines = [f"{'·'.join(g.split('=', 1)[0] for g in args.group)} 데이터와 평가 데이터 해시 비교 (SHA-256)", "=" * 40,
          f"생성: {time.strftime('%Y-%m-%d %H:%M:%S')}",
          "전체 해시 = 파일별 SHA-256을 정렬한 목록의 SHA-256 (cut -d' ' -f1 <그룹>_sha256.txt | LC_ALL=C sort | sha256sum)", "",
          f"[평가] 파일 {len(ev):,}개 (고유 해시 {len(ev_by_hash):,}개)  전체 해시 {total_hash(ev)}", ""]

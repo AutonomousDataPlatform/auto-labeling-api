@@ -6,12 +6,15 @@ ui.py 와의 순환 import를 피하기 위해 자동 라벨링 함수는 인자
 절차는 1) 평가 데이터셋 선택 -> 2) 자동 라벨링 -> 3) GT 확인 -> 4) 정확도 측정 -> 5) 결과 시각화 순이다.
 """
 
+import collections
 import csv
 import datetime
 import json
 import os
 import random
 import re
+import socket
+import time
 import traceback
 
 import streamlit as st
@@ -28,9 +31,11 @@ K_PRED = "eval_predictions"      # {stem: {"detection": [...], "weather":..., "t
 K_ERRORS = "eval_errors"
 K_REPORT = "eval_report"
 K_LOG_DIR = "eval_log_dir"       # 마지막 정확도 측정의 건별 비교 로그 폴더
+K_RUN_DIR = "eval_run_dir"       # 마지막 자동 라벨링 실행의 로그 폴더 (추론 로그를 여기에 쓰고, 측정 결과도 같은 폴더에 둔다)
 K_PREVIEW = "eval_preview"       # 미리보기로 그린 이미지. '다른 이미지 보기'를 누를 때만 다시 그린다
 K_ZIP = "eval_vis_zips"          # {"random": {...}, "all": {...}} 마지막으로 저장한 zip 정보
-RESULT_KEYS = (K_PRED, K_ERRORS, K_REPORT, K_LOG_DIR, K_PREVIEW, K_ZIP)
+RESULT_KEYS = (K_PRED, K_ERRORS, K_REPORT, K_LOG_DIR, K_RUN_DIR, K_PREVIEW, K_ZIP)
+INFERENCE_LOG = "inference_log.txt"
 
 PREVIEW_COUNT = 5
 RANDOM_ZIP_COUNT = 100
@@ -196,10 +201,78 @@ def _step_dataset():
 
 
 # --------------------------------------------------------------------------
+# 추론 로그: 자동 라벨링(추론) 한 건마다 한 줄 (Eval_log/<데이터셋>_<시각>/inference_log.txt)
+# --------------------------------------------------------------------------
+
+def _new_run_dir(dataset, root):
+    stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    out = os.path.join(os.path.dirname(os.path.normpath(root)), "Eval_log", f"{dataset}_{stamp}")
+    os.makedirs(out, exist_ok=True)
+    return out
+
+
+def _log_line(path, level, msg):
+    """개발 로그 형식(시각 수준 메시지)으로 한 줄을 덧붙인다. 줄마다 바로 파일에 쓴다."""
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(f"{ts} {level:<5s} {msg}\n")
+
+
+def _gt_lookup(dataset, root):
+    """이미지 stem -> GT (추론 로그용). 3단계 GT 확인과 같은 로더를 화면 출력 없이 쓴다."""
+    _, gt_path = _paths(root, dataset)
+    if not os.path.exists(gt_path):
+        return lambda stem: None
+    mtime = os.path.getmtime(gt_path)
+    if dataset == "nuScenes":
+        nusc = _load_nuscenes(gt_path, mtime)
+        return lambda stem: nusc.detections(stem) if nusc.covers(stem) else None
+    if dataset == "KITTI":
+        return _load_kitti(gt_path, mtime).get
+    if dataset == "BDD100K":
+        weather, time_ = _load_csv(gt_path, mtime)
+        return lambda stem: (weather.get(stem), time_.get(stem))
+    return _load_tusimple(gt_path, mtime).get
+
+
+def _count(names):
+    return ", ".join(f"{k} {v}" for k, v in sorted(collections.Counter(names).items())) or "없음"
+
+
+def _describe(dataset, pred, gt):
+    """추론 로그 한 줄의 '모델 출력 | GT | 판정'. 판정은 정확도 계산과 같은 매칭 함수로 한다."""
+    if dataset in ("nuScenes", "KITTI"):
+        boxes = pred["detection"]
+        out = f"출력 박스 {len(boxes)}개 ({_count(o['cls'] for o in boxes)})"
+        if gt is None:
+            return f"{out} | GT 없음 | 판정 제외"
+        valid = [o for o in gt if not o.get("ignore")]
+        p_st, g_st = E.match_image_detections(boxes, gt, IOU_THRESHOLD)
+        return (f"{out} | GT 박스 {len(valid)}개 ({_count(o['cls'] for o in valid)}), 무시 영역 {len(gt) - len(valid)}개 | "
+                f"판정 정답(TP) {p_st.count('TP')}, 오답(FP) {p_st.count('FP')}, 무시(IGN) {p_st.count('IGN')}, "
+                f"놓친 GT {g_st.count('FN')}")
+    if dataset == "BDD100K":
+        g_w, g_t = gt if gt else (None, None)
+
+        def judge(g, p):
+            return "제외(GT 없음)" if g is None or p is None else ("정답" if g == p else "오답")
+        return (f"출력 날씨 {pred['weather']}, 시간 {pred['time']} | GT 날씨 {g_w or '-'}, 시간 {g_t or '-'} | "
+                f"판정 날씨 {judge(g_w, pred['weather'])}, 시간 {judge(g_t, pred['time'])}")
+    lanes = pred["lanes"]
+    out = f"출력 차선 {len(lanes)}개 (점 {sum(len(lane) for lane in lanes)}개)"
+    if gt is None:
+        return f"{out} | GT 없음 | 판정 제외"
+    h = gt["h_samples"]
+    matches, _, _ = E.match_generated_lanes([E._pred_lane_xs(lane, h) for lane in lanes], gt["lanes"], h)
+    return (f"{out} | GT 차선 {len(gt['lanes'])}개 | 판정 정답(TP) {len(matches)}, 오답(FP) {len(lanes) - len(matches)}, "
+            f"놓친 GT {len(gt['lanes']) - len(matches)}")
+
+
+# --------------------------------------------------------------------------
 # 2단계: 자동 라벨링
 # --------------------------------------------------------------------------
 
-def _step_autolabel(items, build_auto_labeling):
+def _step_autolabel(dataset, root, items, build_auto_labeling):
     st.subheader("2. 자동 라벨링 실행")
 
     if not items:
@@ -207,19 +280,43 @@ def _step_autolabel(items, build_auto_labeling):
         return
 
     if st.button(f"자동 라벨링 실행 ({len(items)}장)", key="eval_run", type="primary"):
-        predictions, errors = {}, []
+        predictions, errors, elapsed = {}, [], []
+        run_dir = _new_run_dir(dataset, root)
+        log_path = os.path.join(run_dir, INFERENCE_LOG)
+        gt_of = _gt_lookup(dataset, root)
+        n, width = len(items), len(str(len(items)))
+        _log_line(log_path, "INFO", f"자동 라벨링 시작: 데이터셋 {dataset}, 이미지 {n:,}장, 평가 데이터 {root}, "
+                                    f"호스트 {socket.gethostname()}, 추론 시간 = 이미지 1장의 API 요청~응답(모델 4개 동시 호출)")
         progress = st.progress(0.0, text="처리 중…")
+        t_start = time.perf_counter()
         for i, (stem, name, path) in enumerate(items, 1):
+            tag = f"[{dataset} {i:0{width}d}/{n}] {name}"
             try:
-                auto = build_auto_labeling(name, _read_bytes(path))
+                data = _read_bytes(path)
+                t0 = time.perf_counter()
+                auto = build_auto_labeling(name, data)
+                ms = (time.perf_counter() - t0) * 1000
                 predictions[stem] = E.predictions_from_auto_labeling(auto)
+                elapsed.append(ms)
+                try:
+                    detail = _describe(dataset, predictions[stem], gt_of(stem))
+                except Exception as exc:                  # 로그 요약 실패가 추론을 멈추지 않게 한다
+                    detail = f"요약 실패 {type(exc).__name__}: {exc}"
+                _log_line(log_path, "INFO", f"{tag} 추론 성공 {ms:.1f} ms | {detail}")
             except Exception as exc:                      # 한 장 실패로 전체가 멈추지 않게 한다
                 errors.append({"file": name, "error": f"{type(exc).__name__}: {exc}"})
-            progress.progress(i / len(items), text=f"{i}/{len(items)}")
+                _log_line(log_path, "ERROR", f"{tag} 추론 실패 | {type(exc).__name__}: {exc}")
+            progress.progress(i / n, text=f"{i}/{n}")
         progress.empty()
+        total = time.perf_counter() - t_start
+        stats = (f", 추론 시간 평균 {sum(elapsed) / len(elapsed):.1f} ms (최소 {min(elapsed):.1f}, 최대 {max(elapsed):.1f})"
+                 if elapsed else "")
+        _log_line(log_path, "INFO", f"자동 라벨링 종료: 성공 {len(predictions):,}장, 실패 {len(errors):,}장{stats}, "
+                                    f"전체 {total:.1f}초")
         st.session_state[K_PRED] = predictions
         st.session_state[K_ERRORS] = errors
         _clear((K_REPORT, K_LOG_DIR, K_PREVIEW, K_ZIP))            # 예측이 바뀌면 이전 평가·시각화 결과는 무효
+        st.session_state[K_RUN_DIR] = run_dir
 
     preds = st.session_state.get(K_PRED)
     if preds:
@@ -408,6 +505,10 @@ def _report_for_download(report):
 
 LOG_README = """자동 라벨링 정확도 측정 로그
 ==========================
+inference_log.txt  추론 로그. 자동 라벨링(추론) 한 건마다 한 줄:
+                   시각, [데이터셋 순번/전체] 파일, 추론 성공·실패, 추론 시간(API 요청~응답, 모델 4개 동시 호출),
+                   모델 출력 요약 | GT 요약 | 판정. 처음과 끝에 시작·종료(성공·실패 수, 평균 추론 시간),
+                   [정확도 측정] 때 항목별 정확도가 이어서 적힌다
 report.json        정확도 측정 결과 (웹 UI [정확도 측정] 화면과 같은 값, 항목별 accuracy)
 predictions.json   자동 라벨링 결과 (이미지별 생성 라벨: 검출 박스·신뢰도, 날씨, 시간, 차선 점열)
 *_log.csv          GT와 생성 라벨의 건별 비교. 정확도는 이 파일만으로 다시 계산할 수 있다.
@@ -437,18 +538,32 @@ def _write_csv(path, rows):
         writer.writerows(rows)
 
 
-def _save_eval_log(dataset, root, preds, gt, report):
-    """측정 결과를 검산할 수 있도록 리포트·자동 라벨링 결과·건별 비교 로그를 한 폴더에 저장하고 경로를 돌려준다."""
+def _save_eval_log(dataset, root, preds, gt, report, run_dir=None):
+    """측정 결과를 검산할 수 있도록 리포트·자동 라벨링 결과·건별 비교 로그를 한 폴더에 저장하고 경로를 돌려준다.
+    자동 라벨링 때 만든 폴더(run_dir, 추론 로그가 있는 곳)가 있으면 같은 폴더에 쓰고, 측정 결과를 추론 로그에 이어 적는다."""
     stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    out = os.path.join(os.path.dirname(os.path.normpath(root)), "Eval_log", f"{dataset}_{stamp}")
-    os.makedirs(out, exist_ok=True)
+    out = run_dir if run_dir and os.path.isdir(run_dir) else _new_run_dir(dataset, root)
     meta = {"dataset": dataset, "eval_dir": root, "created": stamp, "n_images": len(preds)}
     with open(os.path.join(out, "report.json"), "w", encoding="utf-8") as f:
         json.dump({**meta, **_report_for_download(report)}, f, indent=2, ensure_ascii=False)
     with open(os.path.join(out, "predictions.json"), "w", encoding="utf-8") as f:
         json.dump({s: preds[s] for s in sorted(preds)}, f, ensure_ascii=False)
+    log_path = os.path.join(out, INFERENCE_LOG)
+    full = _report_for_download(report)
     for t in DATASETS[dataset]["tasks"]:
         _write_csv(os.path.join(out, f"{TASKS[t]['key']}_log.csv"), TASKS[t]["log"](preds, gt))
+        r = report[TASKS[t]["key"]]
+        if t == "Detection":
+            a, b = r["totals"]["TP"], r["totals"]["TP"] + r["totals"]["FP"]
+        elif t == "Lane":
+            a, b = r["n_correct_lanes"], r["n_pred_lanes"]
+        else:
+            b = r["n"]
+            a = round(r["accuracy"] * b)
+        _log_line(log_path, "INFO", f"정확도 측정: {TASKS[t]['title']} 정확도 {full[TASKS[t]['key']]['accuracy'] * 100:.2f}% "
+                                    f"(정답 {a:,} / 판정 {b:,}), 판정 대상 이미지 {len(preds):,}장")
+    _log_line(log_path, "INFO", "측정 결과 저장: report.json, predictions.json, " +
+              ", ".join(f"{TASKS[t]['key']}_log.csv" for t in DATASETS[dataset]["tasks"]))
     with open(os.path.join(out, "README.txt"), "w", encoding="utf-8") as f:
         f.write(LOG_README)
     return out
@@ -467,13 +582,14 @@ def _step_evaluate(dataset, root, preds, gt):
         for t in tasks:
             report[TASKS[t]["key"]] = TASKS[t]["evaluate"](preds, gt)
         st.session_state[K_REPORT] = report
-        st.session_state[K_LOG_DIR] = _save_eval_log(dataset, root, preds, gt, report)
+        st.session_state[K_LOG_DIR] = _save_eval_log(dataset, root, preds, gt, report,
+                                                     st.session_state.get(K_RUN_DIR))
     report = st.session_state.get(K_REPORT)
     if not report:
         return
     if st.session_state.get(K_LOG_DIR):
         st.success(f"건별 비교 로그 저장: `{_windows_path(st.session_state[K_LOG_DIR])}` "
-                   "(report.json, predictions.json, *_log.csv, README.txt)")
+                   "(inference_log.txt, report.json, predictions.json, *_log.csv, README.txt)")
 
     st.divider()
     for t in tasks:
@@ -606,7 +722,7 @@ def render_evaluation_tab(build_auto_labeling):
     try:
         dataset, root, items = _step_dataset()
         st.divider()
-        _step_autolabel(items, build_auto_labeling)
+        _step_autolabel(dataset, root, items, build_auto_labeling)
         st.divider()
         preds = st.session_state.get(K_PRED) or {}
         gt = _step_gt(dataset, root, sorted(preds))

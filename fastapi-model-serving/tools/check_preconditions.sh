@@ -111,12 +111,15 @@ done
 # ---------------------------------------------------------------------------
 echo; echo "4. 부하 격리 (GPU를 쓰는 다른 프로세스)"
 # WSL의 nvidia-smi는 프로세스 목록을 보여주지 않으므로 GPU 장치(/dev/dxg, 리눅스는 /dev/nvidia*)를 연 프로세스를 찾는다.
-# 다른 사용자의 프로세스는 권한상 보이지 않는다
-gpu_procs=()
+# 다른 사용자의 프로세스는 권한상 보이지 않는다.
+# 화면 표시용 데스크톱 프로세스(Xorg, gnome-shell 등)는 웹 UI를 쓰려면 필요하므로 부하로 세지 않고 따로 표시한다
+DESKTOP_PROCS='^(Xorg|Xwayland|gnome-shell|kwin_x11|kwin_wayland|plasmashell|gdm-x-session|compiz|cinnamon|xfwm4)$'
+gpu_procs=(); desktop_procs=()
 for p in /proc/[0-9]*; do
   [ "${p#/proc/}" = "$$" ] && continue
   if ls -l "$p/fd" 2>/dev/null | grep -qE '/dev/(dxg|nvidia)'; then
-    gpu_procs+=("${p#/proc/} $(tr '\0' ' ' < "$p/cmdline" 2>/dev/null | cut -c1-100)")
+    entry="${p#/proc/} $(tr '\0' ' ' < "$p/cmdline" 2>/dev/null | cut -c1-100)"
+    if grep -qE "$DESKTOP_PROCS" "$p/comm" 2>/dev/null; then desktop_procs+=("$entry"); else gpu_procs+=("$entry"); fi
   fi
 done
 if [ ${#gpu_procs[@]} -eq 0 ]; then
@@ -125,6 +128,7 @@ else
   fail "GPU를 쓰는 프로세스 ${#gpu_procs[@]}개 (시험과 무관한 프로세스면 종료)"
   for g in "${gpu_procs[@]}"; do info "PID $g"; done
 fi
+for g in "${desktop_procs[@]}"; do info "화면 표시용 데스크톱 프로세스 (부하 아님) PID $g"; done
 command -v nvidia-smi >/dev/null &&
   info "GPU $(nvidia-smi --query-gpu=name,memory.used,memory.total --format=csv,noheader 2>/dev/null)"
 info "CPU 부하(1분 평균) $(cut -d' ' -f1 /proc/loadavg), 코어 $(nproc)개"

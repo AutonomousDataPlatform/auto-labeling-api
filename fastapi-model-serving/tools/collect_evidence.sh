@@ -27,7 +27,7 @@ VERSIONS_PY=$(cat <<'PY'
 import importlib, platform
 print(f"    Python {platform.python_version()}")
 for mod, name in [("torch", "PyTorch"), ("torchvision", "torchvision"), ("ultralytics", "Ultralytics"),
-                  ("efficientnet_pytorch", "efficientnet-pytorch"), ("mmcv", "mmcv"), ("clrnet", "CLRNet"),
+                  ("efficientnet_pytorch", "efficientnet-pytorch"), ("mmcv", "mmcv"), ("clrnet", "CLRNet (LaneDetection/clrnet)"),
                   ("fastapi", "FastAPI"), ("uvicorn", "Uvicorn"), ("streamlit", "Streamlit"),
                   ("numpy", "NumPy"), ("cv2", "OpenCV"), ("PIL", "Pillow")]:
     try:
@@ -58,9 +58,11 @@ echo "1/4 SW·HW 정보"
   echo "conda      ${conda_bin:-없음} $("${conda_bin:-false}" --version 2>/dev/null)"
   echo
   echo "[개발 언어·프레임워크·주요 라이브러리 버전]"
+  # 서버가 실행되는 폴더에서 확인한다 (저장소의 streamlit/ 폴더가 패키지로 잡히지 않게, 차선 서버는 LaneDetection/clrnet 소스를 쓴다)
   for e in "${CONDA_ENVS[@]}"; do
     echo "- conda 환경 $e"
-    "$conda_bin" run -n "$e" python -c "$VERSIONS_PY" 2>/dev/null
+    wd="$SERVING/fastapi"; [ "$e" = bigdata_clrnet ] && wd="$SERVING/LaneDetection"
+    (cd "$wd" && "$conda_bin" run -n "$e" python -c "$VERSIONS_PY" 2>/dev/null)
   done
 } > "$OUT/sw/sw_info.txt" 2>&1
 for e in "${CONDA_ENVS[@]}"; do
